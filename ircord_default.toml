@@ -1,0 +1,25 @@
+[irc]
+server = "irc.freenode.net"
+port = 6667
+nickname = "ircordbot"
+# NickServ password, "" for no password
+password = ""
+
+
+[discord]
+# Discord bot token
+token = "your_token"
+
+# Array of mappings between IRC and Discord channels
+# irc is a name of the IRC channel
+# discord is the ID of the channel (can get from the link)
+# webhook is a webhook URL for that channel
+[[mapping]]
+irc = "#channel1"
+discord = "discord chan id 1"
+webhook = "discord webhook 1"
+
+[[mapping]]
+irc = "#channel2"
+discord = "discord chan id 2"
+webhook = "discord webhook 2"
