@@ -118,7 +118,7 @@ proc updateStreamingStatus*(s: Shard, idle: int = 0, game: string, url: string =
             data.game.`type` = 1
             data.game.url = some(url)
 
-    let info = {json.`%`("op"): json.`%`(3), json.`%`("d"): json.`%`(data)}
+    let info = %*{"op": 3, "d": data}
     await s.connection.sendText($info)
 
 proc updateStatus*(s: Shard, idle: int = 0, game: string = "") {.gcsafe, async, inline.} =
@@ -409,7 +409,7 @@ proc startSession*(s: Shard) {.async, gcsafe.} =
                 if wsurl.scheme == "wss": Port(443) else: Port(80), 
                 wsurl.path&GATEWAYVERSION, 
                 true, 
-                useragent = "Discordnim (https://github.com/Krognol/discordnim v"&VERSION&")"
+                useragent = "Ircord (https://github.com/Yardanico/ircord)"
             )
     except:
         echo getCurrentExceptionMsg()
