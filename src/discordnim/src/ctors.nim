@@ -118,7 +118,7 @@ proc newGuildEmojisUpdate*(node591016: JsonNode): GuildEmojisUpdate {.inline.} =
   result = node591016.to(GuildEmojisUpdate)
 
 proc newGuildIntegrationsUpdate*(node592666: JsonNode): GuildIntegrationsUpdate {.
-    inline.} =
+  inline.} =
   result = node592666.to(GuildIntegrationsUpdate)
 
 proc newGuildRoleCreate*(node592795: JsonNode): GuildRoleCreate {.inline.} =
@@ -216,7 +216,7 @@ proc newMessageReactionAdd*(node669051: JsonNode): MessageReactionAdd {.inline.}
   result = node669051.to(MessageReactionAdd)
 
 proc newMessageReactionRemoveAll*(node670748: JsonNode): MessageReactionRemoveAll {.
-    inline.} =
+  inline.} =
   result = node670748.to(MessageReactionRemoveAll)
 
 proc newReady*(node670989: JsonNode): Ready {.inline.} =

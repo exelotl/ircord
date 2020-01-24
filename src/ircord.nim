@@ -18,11 +18,11 @@ var msgUpdateHandler: (proc())
 # Sequence of all webhook IDs we use
 var webhooks = newSeq[string]()
 
-# Two global variables for "irc: webhook" and "channelId: irc" tables. 
+# Two global variables for "irc: webhook" and "channelId: irc" tables.
 var ircToWebhook = newTable[string, string]()
 var discordToIrc = newTable[string, string]()
 
-proc sendWebhook(ircChan, username, content: string) {.async.} = 
+proc sendWebhook(ircChan, username, content: string) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
   let client = newAsyncHttpClient()
@@ -31,12 +31,12 @@ proc sendWebhook(ircChan, username, content: string) {.async.} =
   let resp = await client.post(ircToWebhook[ircChan], data)
   client.close()
 
-proc parseIrcMessage(nick, msg: var string): bool = 
+proc parseIrcMessage(nick, msg: var string): bool =
   result = true
   # Replace some special chars or strings
   # also replaces IRC characters used for styling
   msg = msg.multiReplace({
-    "ACTION": "", 
+    "ACTION": "",
     "\n": "↵", "\r": "↵", "\l": "↵",
     "\1": "", "\x02": "", "\x0F": ""
   })
@@ -52,7 +52,7 @@ proc parseIrcMessage(nick, msg: var string): bool =
     (nick, msg) = (data[0][1..^1] & "[Gitter]", data[1].strip())
     # A really rare case if someone's using the Matrix <-> Gitter bridge
     if "matrixbot" in msg:
-      # Split message by ` to get 
+      # Split message by ` to get
       # @["", "grantmwilliams` like google & golang or mozilla & rust"]
       # then split the second value in seq again to get
       # @["grantmwilliams", " like google & golang or mozilla & rust"]
@@ -65,9 +65,9 @@ proc parseIrcMessage(nick, msg: var string): bool =
     # Specify (in the username) that this user is from IRC
     nick &= "[IRC]"
 
-proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} = 
+proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
   result = false
-  # Only accept commands from whitelisted users and only with ! 
+  # Only accept commands from whitelisted users and only with !
   if nick notin conf.irc.adminList or msg[0] != '!': return
   let data = msg.split(" ")
   if data.len == 0: return
@@ -79,7 +79,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       return
     let username = data[1..^1].join(" ")
     let id = await discord.getUserID(conf.discord.guild, username)
-    let toSend = 
+    let toSend =
       if id != "": username & " has Discord UID: " & id
       else: "Unknown username"
     await ircClient.privmsg(chan, toSend)
@@ -88,7 +88,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
     if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !ban Username#1234 or !ban 174365113899057152")
       return
-    var id = try: 
+    var id = try:
       $parseInt(data[1])
     except:
       await discord.getUserID(conf.discord.guild, data[1..^1].join(" "))
@@ -99,19 +99,19 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       await ircClient.privmsg(chan, "Unknown username")
   else: discard
 
-proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} = 
+proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   ## Handles all events received by IRC client instance
   if event.typ != EvMsg or event.params.len < 2:
     return
-  
+
   # Check that it's a message sent to the channel
   elif event.cmd != MPrivMsg or event.params[0][0] != '#': return
-  
+
   let ircChan = event.origin
 
   var (nick, msg) = (event.nick, event.params[1])
   echo event
-  
+
   # Don't send commands or their output to Discord
   if (await handleCmds(ircChan, nick, msg)): return
 
@@ -127,13 +127,13 @@ proc createPaste*(data: string): Future[Option[string]] {.async.} =
   let data = "f:1=" & data
   try:
     let resp = await client.post("http://ix.io", data)
-    if resp.code == Http200: 
+    if resp.code == Http200:
       result = some(strip(await resp.body))
   except OSError:
     discard
   client.close()
 
-proc checkMessage(m: Message): Option[string] = 
+proc checkMessage(m: Message): Option[string] =
   result = none(string)
   # Don't handle messages which are sent by our own webhooks
   if m.webhook_id.get("") in webhooks: return
@@ -150,12 +150,12 @@ proc handleMsgAttaches*(m: Message): string =
       result &= &"attachment {i+1}: {attach.url} "
     result = result.strip() & ")"
 
-proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} = 
+proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} =
   ## Handles pastes or big messages
   result = msg
   if not ("```" in result or result.count("\n") > 2 or result.len > 500):
     return
-  
+
   let paste = await createPaste(result)
   if paste.isSome():
     result = &"Code paste (or a big message), see {paste.get()}"
@@ -166,19 +166,19 @@ proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} =
 var msgEditHistory = newTable[string, seq[Message]]()
 var msgEditOrder = newTable[string, int]()
 
-proc getOriginalMsg(cid, mid: string): Option[Message] = 
+proc getOriginalMsg(cid, mid: string): Option[Message] =
   result = none(Message)
   for msg in msgEditHistory[cid]:
     if msg.id == mid:
       return some(msg)
 
-proc msgHistoryStore(m: Message) = 
+proc msgHistoryStore(m: Message) =
   # Store last 10 messages in history for each channel
-  var lastEditId = msgEditOrder[m.channel_id] 
+  var lastEditId = msgEditOrder[m.channel_id]
   msgEditHistory[m.channel_id][lastEditId] = m
   msgEditOrder[m.channel_id] = if lastEditId > 9: 0 else: lastEditId + 1
 
-proc msgHandleMentions(m: Message, msg: string): string = 
+proc msgHandleMentions(m: Message, msg: string): string =
   ## Replace ID mentions with proper username and discriminator
   result = msg
   if not m.mentions.isSome(): return
@@ -186,7 +186,7 @@ proc msgHandleMentions(m: Message, msg: string): string =
     let origHandle = "<@!" & $user.id & ">"
     result = result.replace(origHandle, "@" & $user)
 
-proc processMsg(m: Message): Future[string] {.async.} = 
+proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
   # Store last 10 messages in history for each channel
   echo m
@@ -227,16 +227,16 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
     let toSend = &"\x02<{m.author.get()}>\x0F {msg}"
     await ircClient.privmsg(ircChan, toSend)
 
-proc startDiscord() {.async.} = 
-  ## Starts the Discord client instance and connects 
+proc startDiscord() {.async.} =
+  ## Starts the Discord client instance and connects
   ## using token from the configuration.
   discord = newShard("Bot " & conf.discord.token)
   msgCreateHandler = discord.addHandler(EventType.message_create, messageCreate)
   msgUpdateHandler = discord.addHandler(EventType.message_update, messageUpdate)
   await discord.startSession()
 
-proc startIrc() {.async.} = 
-  ## Starts the IRC client and connects to the server and 
+proc startIrc() {.async.} =
+  ## Starts the IRC client and connects to the server and
   ## joins channels specified in the configuration.
   ircClient = newAsyncIrc(
     address = conf.irc.server,
@@ -244,14 +244,14 @@ proc startIrc() {.async.} =
     nick = conf.irc.nickname,
     serverPass = conf.irc.password,
     # All IRC channels we need to connect to
-    joinChans = conf.mapping.mapIt(it.irc), 
+    joinChans = conf.mapping.mapIt(it.irc),
     callback = handleIrc
   )
   await ircClient.connect()
   await sleepAsync(3000)
   await ircClient.run()
 
-proc main() {.async.} = 
+proc main() {.async.} =
   echo "Starting Ircord (wait up to 10 seconds)..."
   conf = parseConfig()
   # Fill global variables
@@ -269,7 +269,7 @@ proc main() {.async.} =
   # Block until startIrc exits
   await startIrc()
 
-proc hook() {.noconv.} = 
+proc hook() {.noconv.} =
   echo "Quitting Ircord..."
   waitFor discord.disconnect()
   ircClient.close()
