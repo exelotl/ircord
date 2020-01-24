@@ -159,119 +159,6 @@ proc each[T](s: Shard, want: EventType, data: T) {.async, gcsafe.} =
     for p in s.handlers[want]:
       cast[proc(_: Shard, d: T){.cdecl.}](p)(s, data)
 
-proc handleDispatch(s: Shard, event: string, data: JsonNode) {.async, gcsafe.} =
-  try:
-    case event:
-      of "READY":
-        let payload = newReady(data)
-        s.session_id = payload.session_id
-        s.cache.version = payload.v
-        s.cache.me = payload.user
-        s.cache.users[payload.user.id] = payload.user
-        for channel in payload.private_channels:
-          s.cache.channels[channel.id] = channel
-
-        s.cache.ready = payload
-        asyncCheck s.each(on_ready, payload)
-      of "RESUMED":
-        asyncCheck s.each(on_ready, newResumed(data))
-      of "CHANNEL_CREATE":
-        let payload = newChannelCreate(data)
-        if s.cache.cacheChannels: s.cache.channels[payload.id] = payload
-        asyncCheck s.each(channel_create, payload)
-      of "CHANNEL_UPDATE":
-        let payload = newChannelUpdate(data)
-        if s.cache.cacheChannels: s.cache.updateChannel(payload)
-        asyncCheck s.each(on_ready, payload)
-      of "CHANNEL_DELETE":
-        let payload = newChannelDelete(data)
-        if s.cache.cacheChannels: s.cache.removeChannel(payload.id)
-        asyncCheck s.each(channel_delete, payload)
-      of "CHANNEL_PINS_UPDATE":
-        asyncCheck s.each(channel_pins_update, newChannelPinsUpdate(data))
-      of "GUILD_CREATE":
-        let payload = newGuildCreate(data)
-        if s.cache.cacheGuilds: s.cache.guilds[payload.id] = payload
-        asyncCheck s.each(guild_create, payload)
-      of "GUILD_UPDATE":
-        let payload = newGuildUpdate(data)
-        if s.cache.cacheGuilds: s.cache.updateGuild(payload)
-        asyncCheck s.each(guild_update, payload)
-      of "GUILD_DELETE":
-        let payload = newGuildDelete(data)
-        if s.cache.cacheGuilds: s.cache.removeGuild(payload.id)
-        asyncCheck s.each(guild_delete, payload)
-      of "GUILD_BAN_ADD":
-        asyncCheck s.each(guild_ban_add, newGuildBanAdd(data))
-      of "GUILD_BAN_REMOVE":
-        asyncCheck s.each(guild_ban_remove, newGuildBanRemove(data))
-      of "GUILD_EMOJIS_UPDATE":
-        asyncCheck s.each(guild_emojis_update, newGuildEmojisUpdate(data))
-      of "GUILD_INTEGRATIONS_UPDATE":
-        asyncCheck s.each(guild_integrations_update, newGuildIntegrationsUpdate(data))
-      of "GUILD_MEMBER_ADD":
-        let payload = newGuildMemberAdd(data)
-        if s.cache.cacheGuildMembers: s.cache.addGuildMember(payload)
-        asyncCheck s.each(guild_member_add, payload)
-      of "GUILD_MEMBER_UPDATE":
-        let payload = newGuildMemberUpdate(data)
-        if s.cache.cacheGuildMembers: s.cache.updateGuildMember(payload)
-        asyncCheck s.each(guild_member_update, payload)
-      of "GUILD_MEMBER_REMOVE":
-        let payload = newGuildMemberRemove(data)
-        if s.cache.cacheGuildMembers: s.cache.removeGuildMember(payload)
-        asyncCheck s.each(guild_member_remove, payload)
-      of "GUILD_MEMBERS_CHUNK":
-        asyncCheck s.each(guild_members_chunk, newGuildMembersChunk(data))
-      of "GUILD_ROLE_CREATE":
-        let payload = newGuildRoleCreate(data)
-        if s.cache.cacheRoles: s.cache.roles[payload.role.id] = payload.role
-        asyncCheck s.each(guild_role_create, payload)
-      of "GUILD_ROLE_UPDATE":
-        let payload = newGuildRoleUpdate(data)
-        if s.cache.cacheRoles: s.cache.updateRole(payload.role)
-        asyncCheck s.each(guild_role_update, payload)
-      of "GUILD_ROLE_DELETE":
-        let payload = newGuildRoleDelete(data)
-        if s.cache.cacheRoles: s.cache.removeRole(payload.role_id)
-        asyncCheck s.each(guild_role_delete, payload)
-      of "MESSAGE_CREATE":
-        asyncCheck s.each(message_create, newMessageCreate(data))
-      of "MESSAGE_UPDATE":
-        asyncCheck s.each(message_update, newMessageUpdate(data))
-      of "MESSAGE_DELETE":
-        asyncCheck s.each(message_delete, newMessageDelete(data))
-      of "MESSAGE_DELETE_BULK":
-        asyncCheck s.each(message_delete_bulk, newMessageDeleteBulk(data))
-      of "MESSAGE_REACTION_ADD":
-        asyncCheck s.each(message_reaction_add, newMessageReactionAdd(data))
-      of "MESSAGE_REACTION_REMOVE":
-        asyncCheck s.each(message_reaction_remove, newMessageReactionRemove(data))
-      of "MESSAGE_REACTION_REMOVE_ALL":
-        asyncCheck s.each(message_reaction_remove_all,
-            newMessageReactionRemoveAll(data))
-      of "PRESENCE_UPDATE":
-        # TODO: Presence Update parsing is currently broken
-        discard
-        #asyncCheck s.each(presence_update, newPresenceUpdate(data))
-      of "TYPING_START":
-        asyncCheck s.each(typing_start, newTypingStart(data))
-      of "USER_UPDATE":
-        asyncCheck s.each(user_update, newUserUpdate(data))
-      of "VOICE_STATE_UPDATE":
-        asyncCheck s.each(voice_state_update, newVoiceStateUpdate(data))
-      of "VOICE_SERVER_UPDATE":
-        asyncCheck s.each(voice_server_update, newVoiceServerUpdate(data))
-      of "WEBHOOKS_UPDATE":
-        asyncCheck s.each(webhooks_update, newWebhooksUpdate(data))
-      of "USER_SETTINGS_UPDATE", "PRESENCES_REPLACE": discard
-      else:
-        echo "Unknown websocket event :: " & event & "\n" & $data
-  except Exception as ex:
-    echo getCurrentExceptionMsg()
-    echo ex.getStackTrace()
-    echo data
-
 proc identify(s: Shard) {.async, gcsafe.} =
   let payload = %*{
       "op": opIDENTIFY,
@@ -315,6 +202,122 @@ proc reconnect(s: Shard) {.async, gcsafe.} =
   s.sequence = 0
   s.session_ID = ""
   await s.identify()
+
+proc handleDispatch(s: Shard, event: string, data: JsonNode) {.async, gcsafe.} =
+  try:
+    case event
+    of "READY":
+      let payload = newReady(data)
+      s.session_id = payload.session_id
+      s.cache.version = payload.v
+      s.cache.me = payload.user
+      s.cache.users[payload.user.id] = payload.user
+      for channel in payload.private_channels:
+        s.cache.channels[channel.id] = channel
+
+      s.cache.ready = payload
+      asyncCheck s.each(on_ready, payload)
+    of "RESUMED":
+      asyncCheck s.each(on_ready, newResumed(data))
+    of "CHANNEL_CREATE":
+      let payload = newChannelCreate(data)
+      if s.cache.cacheChannels: s.cache.channels[payload.id] = payload
+      asyncCheck s.each(channel_create, payload)
+    of "CHANNEL_UPDATE":
+      let payload = newChannelUpdate(data)
+      if s.cache.cacheChannels: s.cache.updateChannel(payload)
+      asyncCheck s.each(on_ready, payload)
+    of "CHANNEL_DELETE":
+      let payload = newChannelDelete(data)
+      if s.cache.cacheChannels: s.cache.removeChannel(payload.id)
+      asyncCheck s.each(channel_delete, payload)
+    of "CHANNEL_PINS_UPDATE":
+      asyncCheck s.each(channel_pins_update, newChannelPinsUpdate(data))
+    of "GUILD_CREATE":
+      let payload = newGuildCreate(data)
+      if s.cache.cacheGuilds: s.cache.guilds[payload.id] = payload
+      asyncCheck s.each(guild_create, payload)
+    of "GUILD_UPDATE":
+      let payload = newGuildUpdate(data)
+      if s.cache.cacheGuilds: s.cache.updateGuild(payload)
+      asyncCheck s.each(guild_update, payload)
+    of "GUILD_DELETE":
+      let payload = newGuildDelete(data)
+      if s.cache.cacheGuilds: s.cache.removeGuild(payload.id)
+      asyncCheck s.each(guild_delete, payload)
+    of "GUILD_BAN_ADD":
+      asyncCheck s.each(guild_ban_add, newGuildBanAdd(data))
+    of "GUILD_BAN_REMOVE":
+      asyncCheck s.each(guild_ban_remove, newGuildBanRemove(data))
+    of "GUILD_EMOJIS_UPDATE":
+      asyncCheck s.each(guild_emojis_update, newGuildEmojisUpdate(data))
+    of "GUILD_INTEGRATIONS_UPDATE":
+      asyncCheck s.each(guild_integrations_update, newGuildIntegrationsUpdate(data))
+    of "GUILD_MEMBER_ADD":
+      let payload = newGuildMemberAdd(data)
+      if s.cache.cacheGuildMembers: s.cache.addGuildMember(payload)
+      asyncCheck s.each(guild_member_add, payload)
+    of "GUILD_MEMBER_UPDATE":
+      let payload = newGuildMemberUpdate(data)
+      if s.cache.cacheGuildMembers: s.cache.updateGuildMember(payload)
+      asyncCheck s.each(guild_member_update, payload)
+    of "GUILD_MEMBER_REMOVE":
+      let payload = newGuildMemberRemove(data)
+      if s.cache.cacheGuildMembers: s.cache.removeGuildMember(payload)
+      asyncCheck s.each(guild_member_remove, payload)
+    of "GUILD_MEMBERS_CHUNK":
+      asyncCheck s.each(guild_members_chunk, newGuildMembersChunk(data))
+    of "GUILD_ROLE_CREATE":
+      let payload = newGuildRoleCreate(data)
+      if s.cache.cacheRoles: s.cache.roles[payload.role.id] = payload.role
+      asyncCheck s.each(guild_role_create, payload)
+    of "GUILD_ROLE_UPDATE":
+      let payload = newGuildRoleUpdate(data)
+      if s.cache.cacheRoles: s.cache.updateRole(payload.role)
+      asyncCheck s.each(guild_role_update, payload)
+    of "GUILD_ROLE_DELETE":
+      let payload = newGuildRoleDelete(data)
+      if s.cache.cacheRoles: s.cache.removeRole(payload.role_id)
+      asyncCheck s.each(guild_role_delete, payload)
+    of "MESSAGE_CREATE":
+      asyncCheck s.each(message_create, newMessageCreate(data))
+    of "MESSAGE_UPDATE":
+      asyncCheck s.each(message_update, newMessageUpdate(data))
+    of "MESSAGE_DELETE":
+      asyncCheck s.each(message_delete, newMessageDelete(data))
+    of "MESSAGE_DELETE_BULK":
+      asyncCheck s.each(message_delete_bulk, newMessageDeleteBulk(data))
+    of "MESSAGE_REACTION_ADD":
+      asyncCheck s.each(message_reaction_add, newMessageReactionAdd(data))
+    of "MESSAGE_REACTION_REMOVE":
+      asyncCheck s.each(message_reaction_remove, newMessageReactionRemove(data))
+    of "MESSAGE_REACTION_REMOVE_ALL":
+      asyncCheck s.each(message_reaction_remove_all,
+          newMessageReactionRemoveAll(data))
+    of "PRESENCE_UPDATE":
+      # TODO: Presence Update parsing is currently broken
+      discard
+      #asyncCheck s.each(presence_update, newPresenceUpdate(data))
+    of "TYPING_START":
+      asyncCheck s.each(typing_start, newTypingStart(data))
+    of "USER_UPDATE":
+      asyncCheck s.each(user_update, newUserUpdate(data))
+    of "VOICE_STATE_UPDATE":
+      asyncCheck s.each(voice_state_update, newVoiceStateUpdate(data))
+    of "VOICE_SERVER_UPDATE":
+      asyncCheck s.each(voice_server_update, newVoiceServerUpdate(data))
+    of "WEBHOOKS_UPDATE":
+      asyncCheck s.each(webhooks_update, newWebhooksUpdate(data))
+    of "USER_SETTINGS_UPDATE", "PRESENCES_REPLACE": discard
+    else:
+      echo "Unknown websocket event :: " & event & "\n" & $data
+  except Exception as ex:
+    # Reconnect on any exception, because why not XD
+    s.suspended = true
+    waitFor s.reconnect()
+    echo getCurrentExceptionMsg()
+    echo ex.getStackTrace()
+    echo data
 
 proc shouldResumeSession(s: Shard): bool {.gcsafe, inline.} = s.suspended and (
     not s.invalidated)
