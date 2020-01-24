@@ -6,6 +6,7 @@ type
     port*: int
     nickname*: string
     password*: string
+    adminList*: seq[string]
   
   DiscordConfig* = object
     token*: string
@@ -35,8 +36,10 @@ proc parseConfig*(filename = "ircord.toml"): Config =
       server: irc["server"].getStr(),
       port: irc["port"].getInt(),
       nickname: irc["nickname"].getStr(),
-      password: irc["password"].getStr()
+      password: irc["password"].getStr(),
     )
+    for admin in irc["adminList"].getElems():
+      result.irc.adminList.add(admin.getStr())
 
     let discord = data["discord"]
     result.discord = DiscordConfig(

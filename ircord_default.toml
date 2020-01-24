@@ -4,7 +4,9 @@ port = 6667
 nickname = "ircordbot"
 # NickServ password, "" for no password
 password = ""
-
+# List of IRC usernames of admins who'll be able to ban people in Discord
+# (or possibly for some other admin-only commands)
+adminList = []
 
 [discord]
 # Discord bot token
