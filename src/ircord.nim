@@ -143,9 +143,9 @@ proc checkMessage(m: Message): Option[string] =
 
 proc handleMsgAttaches*(m: Message): string =
   result = ""
-  if m.attachments.len > 0:
+  if m.attachments.isSome() and m.attachments.get().len > 0:
     result = "("
-    for i, attach in m.attachments:
+    for i, attach in m.attachments.get():
       result &= &"attachment {i+1}: {attach.url} "
     result = result.strip() & ")"
 
@@ -180,7 +180,8 @@ proc msgHistoryStore(m: Message) =
 proc msgHandleMentions(m: Message, msg: string): string = 
   ## Replace ID mentions with proper username and discriminator
   result = msg
-  for user in m.mentions:
+  if not m.mentions.isSome(): return
+  for user in m.mentions.get():
     let origHandle = "<@!" & $user.id & ">"
     result = result.replace(origHandle, "@" & $user)
 
@@ -190,7 +191,7 @@ proc processMsg(m: Message): Future[string] {.async.} =
   echo m
   msgHistoryStore(m)
 
-  result = m.content
+  result = m.content.get("")
   result &= m.handleMsgAttaches()
   result = msgHandleMentions(m, result)
   result = await m.handleMsgPaste(result)
@@ -208,8 +209,9 @@ proc messageUpdate(s: Shard, m: MessageUpdate) {.async.} =
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author}>\x0F (edited) {msg}"
-  await ircClient.privmsg(ircChan, toSend)
+  if m.author.isSome():
+    let toSend = &"\x02<{m.author.get()}>\x0F (edited) {msg}"
+    await ircClient.privmsg(ircChan, toSend)
 
 proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
   ## Called when a new message is posted in Discord
@@ -220,8 +222,9 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author}>\x0F {msg}"
-  await ircClient.privmsg(ircChan, toSend)
+  if m.author.isSome():
+    let toSend = &"\x02<{m.author.get()}>\x0F {msg}"
+    await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} = 
   ## Starts the Discord client instance and connects 

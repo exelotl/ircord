@@ -710,23 +710,10 @@ proc defaultAvatar*(u: User): string =
         else:
             result = endpointAvatar(u.id, get(u.avatar, ""))
 
-proc stripMentions*(msg: Message): string {.gcsafe.} =  
-    ## Strips all user mentions from a message
-    ## and replaces them with plaintext
-    ##
-    ## e.g: <@1901092738173> -> @Username#1234
-    if msg.mentions.len == 0: return msg.content
-
-    result = msg.content
-
-    for user in msg.mentions:
-        let regex = re("(<@!?" & user.id & ">)")
-        result = result.replace(regex, "@" & $user)
-
 proc stripEveryoneMention*(msg: Message): string {.gcsafe.} =
     ## Strips a message of any @everyone and @here mention
-    if not msg.mention_everyone: return msg.content
-    result = msg.content.replace("@everyone", "").replace("@here", "")
+    if not msg.mention_everyone.get(false): return msg.content.get("")
+    result = msg.content.get("").replace("@everyone", "").replace("@here", "")
 
 proc newChannelParams*(name, topic: string = "",
                        position: int = 0,

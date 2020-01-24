@@ -146,20 +146,20 @@ type
         guild_id*: Option[string]
         author*: Option[User]
         member*: Option[GuildMember]
-        content*: string
-        timestamp*: string
+        content*: Option[string]
+        timestamp*: Option[string]
         edited_timestamp*: Option[string]
-        tts*: bool
-        mention_everyone*: bool
-        mentions*: seq[User]
-        mention_roles*: seq[string]
-        attachments*: seq[Attachment]
-        embeds*: seq[Embed]
+        tts*: Option[bool]
+        mention_everyone*: Option[bool]
+        mentions*: Option[seq[User]]
+        mention_roles*: Option[seq[string]]
+        attachments*: Option[seq[Attachment]]
+        embeds*: Option[seq[Embed]]
         reactions*: Option[seq[Reaction]]
         nonce*: Option[string]
-        pinned*: bool
+        pinned*: Option[bool]
         webhook_id*: Option[string]
-        `type`*: int
+        `type`*: Option[int]
         activity*: Option[MessageActivity]
         application*: Option[MessageApplication]
     Reaction* = object
@@ -534,7 +534,7 @@ type
         id*: string
         unavailable*: bool
     GuildBanAdd* = GuildMember
-    GuildBanRemove* = User
+    GuildBanRemove* = GuildMember
     ChannelCreate* = Channel
     ChannelUpdate* = Channel
     ChannelDelete* = Channel
