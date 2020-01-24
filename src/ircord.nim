@@ -74,23 +74,23 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
   case data[0]
   of "!getdiscid":
     result = true
-    if data.len != 2:
+    if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !getid Username#1234")
       return
-    let id = await discord.getUserID(conf.discord.guild, data[1])
+    let id = await discord.getUserID(conf.discord.guild, data[1..^1].join(" "))
     let toSend = 
       if id != "": data[1] & " has Discord UID: " & id
       else: "Unknown username"
     await ircClient.privmsg(chan, toSend)
   of "!bandisc":
     result = true
-    if data.len != 2:
+    if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !ban Username#1234 or !ban 174365113899057152")
       return
     var id = try: 
       $parseInt(data[1])
     except:
-      await discord.getUserID(conf.discord.guild, data[1])
+      await discord.getUserID(conf.discord.guild, data[1..^1].join(" "))
     if id != "":
       await discord.guildUserBan(conf.discord.guild, id)
       await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
