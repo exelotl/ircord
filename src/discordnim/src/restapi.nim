@@ -56,14 +56,14 @@ proc channelEdit*(s: Shard, channelid: string, params: ChannelParams,
   ## Edits a channel with the ChannelParams
   var xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", endpointChannels(channelid), $(%params), xh)).newGuild
+  result = (await doreq(s, "POST", endpointChannels(channelid), $(%params), xh)).newGuild
 
 proc deleteChannel*(s: Shard, channelid: string, reason: string = ""): Future[
     Channel] {.gcsafe, async.} =
   ## Deletes a channel
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "DELETE", endpointChannels(channelid),
+  result = (await doreq(s, "DELETE", endpointChannels(channelid),
         xheaders = xh)).newChannel
 
 proc channelMessages*(s: Shard, channelid: string, before, after,
@@ -196,7 +196,7 @@ proc channelMessageDelete*(s: Shard, channelid, messageid: string,
   ## Deletes a message
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", endpointChannelMessage(channelid, messageid), xheaders = xh)
+  asyncCheck doreq(s, "DELETE", endpointChannelMessage(channelid, messageid), xheaders = xh)
 
 proc channelMessagesDeleteBulk*(s: Shard, channelid: string, messages: seq[
     string]) {.gcsafe, async, inline.} =
@@ -215,7 +215,7 @@ proc channelEditPermissions*(s: Shard, channelid: string, overwrite: Overwrite,
   }
   let xh: HttpHeaders = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PUT", endpointChannelPermissions(channelid,
+  asyncCheck doreq(s, "PUT", endpointChannelPermissions(channelid,
         overwrite.id), $payload, xh)
 
 proc channelInvites*(s: Shard, channel: string): Future[seq[Invite]] {.gcsafe,
@@ -238,14 +238,14 @@ proc channelCreateInvite*(
       "unique": unique}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", endpointChannelInvites(channel), $payload, xh)).newInvite
+  result = (await doreq(s, "POST", endpointChannelInvites(channel), $payload, xh)).newInvite
 
 proc channelDeletePermission*(s: Shard, channel, target: string,
     reason: string = "") {.gcsafe, async.} =
   ## Deletes a channel permission
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", endpointCHannelPermissions(channel, target), xheaders = xh)
+  asyncCheck doreq(s, "DELETE", endpointCHannelPermissions(channel, target), xheaders = xh)
 
 proc typingIndicatorTrigger*(s: Shard, channel: string) {.gcsafe, async, inline.} =
   ## Triggers the "X is typing" indicator
@@ -333,7 +333,7 @@ proc guildEdit*(s: Shard, guild: string, settings: GuildParams,
   ## Edits a guild with the GuildParams
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "PATCH", endpointGuild(guild), $(%settings), xh)).newGuild
+  result = (await doreq(s, "PATCH", endpointGuild(guild), $(%settings), xh)).newGuild
 
 proc deleteGuild*(s: Shard, guild: string): Future[Guild] {.gcsafe, inline, async.} =
   ## Deletes a guild
@@ -359,7 +359,7 @@ proc guildChannelCreate*(
   if permOW.len > 0: payload["permission_overwrites"] = %permOW
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", endpointGuildChannels(guild), $payload,
+  result = (await doreq(s, "POST", endpointGuildChannels(guild), $payload,
         xh)).newChannel
 
 proc guildChannelPositionEdit*(s: Shard, guild, channel: string, position: int,
@@ -368,7 +368,7 @@ proc guildChannelPositionEdit*(s: Shard, guild, channel: string, position: int,
   let payload = %*{"id": channel, "position": position}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    let node = (await doreq(s, "PATCH", endpointGuildChannels(guild), $payload, xh))
+  let node = (await doreq(s, "PATCH", endpointGuildChannels(guild), $payload, xh))
   result = newSeq[Channel](node.elems.len)
   for i, n in node.elems:
     result[i] = newChannel(n)
@@ -419,7 +419,7 @@ proc guildMemberMute*(s: Shard, guild, userid: string, mute: bool,
   let payload = %*{"mute": mute}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
+  asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
 
 proc guildMemberDeafen*(s: Shard, guild, userid: string, deafen: bool,
     reason: string = "") {.gcsafe, async.} =
@@ -427,7 +427,7 @@ proc guildMemberDeafen*(s: Shard, guild, userid: string, deafen: bool,
   let payload = %*{"deaf": deafen}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
+  asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
 
 proc guildMemberMove*(s: Shard, guild, userid, channel: string,
     reason: string = "") {.gcsafe, async.} =
@@ -436,28 +436,28 @@ proc guildMemberMove*(s: Shard, guild, userid, channel: string,
   let payload = %*{"channel_id": channel}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
+  asyncCheck doreq(s, "PATCH", endpointGuildMember(guild, userid), $payload, xh)
 
 proc setNickname*(s: Shard, guild, nick: string, reason: string = "") {.gcsafe, async.} =
   ## Sets the nick for the current user
   let payload = %*{"nick": nick}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PATCH", endpointEditNick(guild), $payload, xh)
+  asyncCheck doreq(s, "PATCH", endpointEditNick(guild), $payload, xh)
 
 proc guildMemberAddRole*(s: Shard, guild, userid, roleid: string,
     reason: string = "") {.gcsafe, async.} =
   ## Adds a role to a guild member
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PUT", endpointGuildMemberRoles(guild, userid, roleid), xheaders = xh)
+  asyncCheck doreq(s, "PUT", endpointGuildMemberRoles(guild, userid, roleid), xheaders = xh)
 
 proc guildMemberRemoveRole*(s: Shard, guild, userid, roleid: string,
     reason: string = "") {.gcsafe, async.} =
   ## Removes a role from a guild member
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", endpointGuildMemberRoles(guild, userid,
+  asyncCheck doreq(s, "DELETE", endpointGuildMemberRoles(guild, userid,
         roleid), xheaders = xh)
 
 proc guildRemoveMemberWithReason*(s: Shard, guild, userid, reason: string) {.
@@ -466,7 +466,7 @@ proc guildRemoveMemberWithReason*(s: Shard, guild, userid, reason: string) {.
   if reason != "": url &= "?reason=" & encodeUrl(reason)
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", url, xheaders = xh)
+  asyncCheck doreq(s, "DELETE", url, xheaders = xh)
 
 proc guildRemoveMember*(s: Shard, guild, userid: string, reason: string = "") {.
     gcsafe, inline, async.} =
@@ -485,14 +485,14 @@ proc guildUserBan*(s: Shard, guild, userid: string, reason: string = "") {.
   ## Bans a user from the guild
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "PUT", endpointGuildBan(guild, userid), xheaders = xh)
+  asyncCheck doreq(s, "PUT", endpointGuildBan(guild, userid), xheaders = xh)
 
 proc guildRemoveBan*(s: Shard, guild, userid: string, reason: string = "") {.
     gcsafe, async.} =
   ## Removes a ban from the guild
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", endpointGuildBan(guild, userid), xheaders = xh)
+  asyncCheck doreq(s, "DELETE", endpointGuildBan(guild, userid), xheaders = xh)
 
 proc guildRoles*(s: Shard, guild: string): Future[seq[Role]] {.gcsafe, async.} =
   ## Returns all guild roles
@@ -513,7 +513,7 @@ proc guildCreateRole*(s: Shard, guild: string, reason: string = ""): Future[
   ## Creates a new role in the guild
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", endpointGuildRoles(guild),
+  result = (await doreq(s, "POST", endpointGuildRoles(guild),
         xheaders = xh)).newRole
 
 proc guildEditRolePosition*(s: Shard, guild: string, roles: seq[Role],
@@ -522,7 +522,7 @@ proc guildEditRolePosition*(s: Shard, guild: string, roles: seq[Role],
   ## and returns the new roles order
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    let node = (await doreq(s, "PATCH", endpointGuildRoles(guild), $(%roles), xh))
+  let node = (await doreq(s, "PATCH", endpointGuildRoles(guild), $(%roles), xh))
   result = newSeq[Role](node.elems.len)
   for i, n in node.elems:
     result[i] = newRole(n)
@@ -539,7 +539,7 @@ proc guildEditRole*(
       "hoist": hoist, "mentionable": mentionable}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "PATCH", endpointGuildRole(guild, roleid),
+  result = (await doreq(s, "PATCH", endpointGuildRole(guild, roleid),
         $payload, xh)).newRole
 
 proc guildDeleteRole*(s: Shard, guild, roleid: string, reason: string = "") {.
@@ -547,7 +547,7 @@ proc guildDeleteRole*(s: Shard, guild, roleid: string, reason: string = "") {.
   ## Deletes a role
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    asyncCheck doreq(s, "DELETE", endpointGuildRole(guild, roleid), xheaders = xh)
+  asyncCheck doreq(s, "DELETE", endpointGuildRole(guild, roleid), xheaders = xh)
 
 proc guildPruneCount*(s: Shard, guild: string, days: int): Future[int] {.gcsafe, async.} =
   ## Returns the number of members who would get kicked
@@ -563,7 +563,7 @@ proc guildPruneBegin*(s: Shard, guild: string, days: int,
   var url = endpointGuildPruneCount(guild) & "?days=" & $days
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", url, xheaders = xh))["pruned"].getInt()
+  result = (await doreq(s, "POST", url, xheaders = xh))["pruned"].getInt()
 
 proc guildVoiceRegions*(s: Shard, guild: string): Future[seq[VoiceRegion]] {.
     gcsafe, inline, async.} =
@@ -666,7 +666,7 @@ proc inviteDelete*(s: Shard, code: string, reason: string = ""): Future[
   ## Deletes an invite
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "DELETE", endpointInvite(code),
+  result = (await doreq(s, "DELETE", endpointInvite(code),
         xheaders = xh)).newInvite
 
 proc me*(s: Shard): User {.gcsafe, inline.} =
@@ -725,7 +725,7 @@ proc webhookCreate*(s: Shard, channel, name, avatar: string,
   let payload = %*{"name": name, "avatar": avatar}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "POST", endpointWebhooks(channel), $payload,
+  result = (await doreq(s, "POST", endpointWebhooks(channel), $payload,
         xh)).newWebhook
 
 proc channelWebhooks*(s: Shard, channel: string): Future[seq[Webhook]] {.gcsafe,
@@ -756,7 +756,7 @@ proc webhookEdit*(s: Shard, webhook, name, avatar: string,
   let payload = %*{"name": name, "avatar": avatar}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "PATCH", endpointWebhook(webhook), $payload,
+  result = (await doreq(s, "PATCH", endpointWebhook(webhook), $payload,
         xh)).newWebhook
 
 proc webhookEditWithToken*(s: Shard, webhook, token, name, avatar: string,
@@ -765,7 +765,7 @@ proc webhookEditWithToken*(s: Shard, webhook, token, name, avatar: string,
   let payload = %*{"name": name, "avatar": avatar}
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "PATCH", endpointWebhookWithToken(webhook, token),
+  result = (await doreq(s, "PATCH", endpointWebhookWithToken(webhook, token),
         $payload, xh)).newWebhook
 
 proc webhookDelete*(s: Shard, webhook: string, reason: string = ""): Future[
@@ -773,7 +773,7 @@ proc webhookDelete*(s: Shard, webhook: string, reason: string = ""): Future[
   ## Deletes a webhook
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "DELETE", endpointWebhook(webhook),
+  result = (await doreq(s, "DELETE", endpointWebhook(webhook),
         xheaders = xh)).newWebhook
 
 proc webhookDeleteWithToken*(s: Shard, webhook, token: string,
@@ -781,7 +781,7 @@ proc webhookDeleteWithToken*(s: Shard, webhook, token: string,
   ## Deltes a webhook with a token
   let xh = if reason != "": newHttpHeaders({
       "X-Audit-Log-Reason": reason}) else: nil
-    result = (await doreq(s, "DELETE", endpointWebhookWithToken(webhook, token),
+  result = (await doreq(s, "DELETE", endpointWebhookWithToken(webhook, token),
         xheaders = xh)).newWebhook
 
 proc executeWebhook*(s: Shard, webhook, token: string,

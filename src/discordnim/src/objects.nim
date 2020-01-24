@@ -38,7 +38,7 @@ proc postCheck*(r: RateLimit, url: string, response: AsyncResponse): Future[
   if response.code == Http429:
     let delay = if response.headers.hasKey("Retry-After"): response.headers[
                 "Retry-After"].parseInt else: -1
-        if delay == -1: return false
+    if delay == -1: return false
 
     await sleepAsync delay+100
     result = true
@@ -49,7 +49,7 @@ proc postCheck*(r: RateLimits, url: string, response: AsyncResponse): Future[
     result = await r.global.postCheck(url, response)
   else:
     let rl = if r.endpoints.hasKey(url): r.endpoints[url] else: new(RateLimit)
-        result = await rl.postCheck(url, response)
+    result = await rl.postCheck(url, response)
 
 proc preCheck*(r: RateLimits, url: string) {.async, gcsafe.} =
   await r.global.preCheck()
@@ -646,7 +646,7 @@ proc `%`*[T](o: Option[T]): JsonNode =
         ""
     else:
         new(T)[]
-    result = %(o.get(default))
+  result = %(o.get(default))
 
 {.hint[Pattern]: off.}
 when defined(generateCtors):
