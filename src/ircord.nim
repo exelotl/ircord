@@ -172,7 +172,7 @@ proc messageUpdate(s: Shard, m: MessageUpdate) {.async.} =
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x0F (edited) {msg}"
+  let toSend = &"\x02<{m.author}>\x0F (edited) {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
@@ -184,7 +184,7 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x0F {msg}"
+  let toSend = &"\x02<{m.author}>\x0F {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} = 
