@@ -72,7 +72,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
   let data = msg.split(" ")
   if data.len == 0: return
   case data[0]
-  of "!getid":
+  of "!getdiscid":
     result = true
     if data.len != 2:
       await ircClient.privmsg(chan, "Usage: !getid Username#1234")
@@ -82,7 +82,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       if id != "": data[1] & " has Discord UID: " & id
       else: "Unknown username"
     await ircClient.privmsg(chan, toSend)
-  of "!ban":
+  of "!bandisc":
     result = true
     if data.len != 2:
       await ircClient.privmsg(chan, "Usage: !ban Username#1234 or !ban 174365113899057152")
