@@ -268,9 +268,9 @@ type
         user*: Option[User]
         nick*: Option[string]
         roles*: seq[string]
-        joined_at*: string
-        deaf*: bool
-        mute*: bool
+        joined_at*: Option[string]
+        deaf*: Option[bool]
+        mute*: Option[bool]
     Integration* = object
         id*: string
         name*: string
