@@ -141,21 +141,35 @@ proc msgHistoryStore(m: Message) =
   msgEditHistory[m.channel_id][lastEditId] = m
   msgEditOrder[m.channel_id] = if lastEditId > 9: 0 else: lastEditId + 1
 
+proc msgHandleMentions(m: Message, msg: string): string = 
+  ## Replace ID mentions with proper username and descriminator
+  result = msg
+  for user in m.mentions:
+    let origHandle = "<@!" & $user.id & ">"
+    result = result.replace(origHandle, "@" & $user)
+
+proc processMsg(m: Message): Future[string] {.async.} = 
+  ## Does all needed modifications on message conents before sending it
+  # Store last 10 messages in history for each channel
+  echo m
+  msgHistoryStore(m)
+
+  result = m.content
+  result &= m.handleMsgAttaches()
+  result = msgHandleMentions(m, result)
+  result = await m.handleMsgPaste(result)
+
 proc messageUpdate(s: Shard, m: MessageUpdate) {.async.} =
   ## Called when a message is edited in Discord
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
-  echo m
-  
+
   let oldMsg = getOriginalMsg(m.channel_id, m.id)
   # Don't know how to handle edited messages yet
   if oldMsg.isSome(): discard
-  msgHistoryStore(m)
 
-  var msg = m.content
-  msg &= m.handleMsgAttaches()
-  msg = await m.handleMsgPaste(msg)
+  let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
   let toSend = &"\x02<{m.author.username}>\x0F (edited) {msg}"
@@ -166,14 +180,8 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
-  echo m
 
-  # Store last 10 messages in history for each channel
-  msgHistoryStore(m)
-
-  var msg = m.content
-  msg &= m.handleMsgAttaches()
-  msg = await m.handleMsgPaste(msg)
+  let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
   let toSend = &"\x02<{m.author.username}>\x0F {msg}"
