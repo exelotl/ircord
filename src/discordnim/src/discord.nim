@@ -265,6 +265,7 @@ proc handleDispatch(s: Shard, event: string, data: JsonNode) {.async, gcsafe.} =
             else:
                 echo "Unknown websocket event :: " & event & "\n" & $data
     except Exception as ex:
+        echo getCurrentExceptionMsg()
         echo ex.getStackTrace()
         echo data
 

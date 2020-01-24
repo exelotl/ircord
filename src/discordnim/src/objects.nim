@@ -518,7 +518,10 @@ type
         channel_id*: string
     MessageCreate* = Message
     MessageUpdate* = Message
-    MessageDelete* = Message
+    MessageDelete* = object
+        id*: string
+        channel_id*: string
+        guild_id*: Option[string]
     GuildMemberAdd* = GuildMember
     GuildMemberUpdate* = GuildMember
     GuildMemberRemove* = GuildMember
