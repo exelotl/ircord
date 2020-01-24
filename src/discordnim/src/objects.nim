@@ -144,7 +144,7 @@ type
         id*: string
         channel_id*: string
         guild_id*: Option[string]
-        author*: User
+        author*: Option[User]
         member*: Option[GuildMember]
         content*: string
         timestamp*: string
@@ -267,7 +267,7 @@ type
         guild_id*: Option[string]
         user*: Option[User]
         nick*: Option[string]
-        roles*: seq[string]
+        roles*: Option[seq[string]]
         joined_at*: Option[string]
         deaf*: Option[bool]
         mute*: Option[bool]
@@ -533,7 +533,7 @@ type
     GuildDelete* = object
         id*: string
         unavailable*: bool
-    GuildBanAdd* = User
+    GuildBanAdd* = GuildMember
     GuildBanRemove* = User
     ChannelCreate* = Channel
     ChannelUpdate* = Channel

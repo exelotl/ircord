@@ -26,8 +26,9 @@ proc request(s: Shard,
     else:
         if meth == "POST":
             result = await client.post(url, b, mp)
+    # Read response body and cache it for later use
+    discard await result.body()
     client.close()
-
     if (await s.globalRL.postCheck(url, result)) and sequence < 5:
         result = await s.request(id, meth, url, contenttype, b, sequence+1)
 
@@ -37,7 +38,11 @@ proc request(s: Shard,
 
 proc doreq(s: Shard, meth, endpoint, payload: string = "", xheaders: HttpHeaders = nil, mpd: MultipartData = nil): Future[JsonNode] {.gcsafe, async.} =
     let res = await s.request(endpoint, meth, endpoint, "application/json", payload, 0, xheaders = xheaders)
-    result = (await res.body).parseJson
+    # 204 means Discord didn't give us any data 
+    if res.code == Http204:
+        result = newJObject()
+    else:
+        result = (await res.body).parseJson
 
 proc channel*(s: Shard, channel_id: string): Future[Channel] {.gcsafe, async.} =
     result = (await doreq(s, endpointChannels(channel_id))).newChannel

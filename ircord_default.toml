@@ -11,6 +11,8 @@ adminList = []
 [discord]
 # Discord bot token
 token = "your_token"
+# Discord guild ID (ID of the server)
+guild = "123456789889003530"
 
 # Array of mappings between IRC and Discord channels
 # irc is a name of the IRC channel

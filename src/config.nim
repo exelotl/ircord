@@ -10,6 +10,7 @@ type
   
   DiscordConfig* = object
     token*: string
+    guild*: string
 
   ChannelMapping* = object
     irc*, discord*, webhook*: string
@@ -43,7 +44,8 @@ proc parseConfig*(filename = "ircord.toml"): Config =
 
     let discord = data["discord"]
     result.discord = DiscordConfig(
-      token: discord["token"].getStr()
+      token: discord["token"].getStr(),
+      guild: discord["guild"].getStr()
     )
 
     let mappings = data["mapping"]

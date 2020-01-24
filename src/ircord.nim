@@ -4,7 +4,7 @@ import httpclient, asyncdispatch, tables, options
 # Nimble
 import discordnim/discordnim, irc
 # Our modules
-import config
+import config, utils
 
 # Global configuration object
 var conf: Config
@@ -65,6 +65,39 @@ proc parseIrcMessage(nick, msg: var string): bool =
     # Specify (in the username) that this user is from IRC
     nick &= "[IRC]"
 
+proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} = 
+  result = false
+  # Only accept commands from whitelisted users and only with ! 
+  if nick notin conf.irc.adminList or msg[0] != '!': return
+  let data = msg.split(" ")
+  if data.len == 0: return
+  case data[0]
+  of "!getid":
+    result = true
+    if data.len != 2:
+      await ircClient.privmsg(chan, "Usage: !getid Username#1234")
+      return
+    let id = await discord.getUserID(conf.discord.guild, data[1])
+    let toSend = 
+      if id != "": data[1] & " has Discord UID: " & id
+      else: "Unknown username"
+    await ircClient.privmsg(chan, toSend)
+  of "!ban":
+    result = true
+    if data.len != 2:
+      await ircClient.privmsg(chan, "Usage: !ban Username#1234 or !ban 174365113899057152")
+      return
+    var id = try: 
+      $parseInt(data[1])
+    except:
+      await discord.getUserID(conf.discord.guild, data[1])
+    if id != "":
+      await discord.guildUserBan(conf.discord.guild, id)
+      await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
+    else:
+      await ircClient.privmsg(chan, "Unknown username")
+  else: discard
+
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} = 
   ## Handles all events received by IRC client instance
   if event.typ != EvMsg or event.params.len < 2:
@@ -78,9 +111,12 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   var (nick, msg) = (event.nick, event.params[1])
   echo event
   
-  if not parseIrcMessage(nick, msg): return
+  # Don't send commands or their output to Discord
+  if (await handleCmds(ircChan, nick, msg)): return
 
-  asyncCheck sendWebhook(ircChan, nick, msg)
+  if not parseIrcMessage(nick, msg): return
+  else:
+    asyncCheck sendWebhook(ircChan, nick, msg)
 
 proc createPaste*(data: string): Future[Option[string]] {.async.} =
   ## Creates a paste with `data` on ix.io and returns some(string)
@@ -142,7 +178,7 @@ proc msgHistoryStore(m: Message) =
   msgEditOrder[m.channel_id] = if lastEditId > 9: 0 else: lastEditId + 1
 
 proc msgHandleMentions(m: Message, msg: string): string = 
-  ## Replace ID mentions with proper username and descriminator
+  ## Replace ID mentions with proper username and discriminator
   result = msg
   for user in m.mentions:
     let origHandle = "<@!" & $user.id & ">"
