@@ -22,6 +22,9 @@ var webhooks = newSeq[string]()
 var ircToWebhook = newTable[string, string]()
 var discordToIrc = newTable[string, string]()
 
+var msgEditHistory = newTable[string, seq[Message]]()
+var msgEditOrder = newTable[string, int]()
+
 proc sendWebhook(ircChan, username, content: string) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
@@ -72,31 +75,58 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
   let data = msg.split(" ")
   if data.len == 0: return
   case data[0]
+  # Gets a Discord UID of all users which match the string
   of "!getdiscid":
     result = true
     if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !getid Username#1234")
       return
     let username = data[1..^1].join(" ")
-    let id = await discord.getUserID(conf.discord.guild, username)
-    let toSend =
-      if id != "": username & " has Discord UID: " & id
-      else: "Unknown username"
+    let users = await discord.getUsers(conf.discord.guild, username)
+    var toSend = ""
+    if users.len == 1: toSend = $users[0] & " has Discord UID: " & users[0].id
+    elif users.len > 1: 
+      for user in users:
+        toSend &= $user & " has Discord UID " & user.id & ", "
+    else: toSend = "Unknown username"
     await ircClient.privmsg(chan, toSend)
+  # Gets a Discord UID of a user who sent the last message on Discord
+  # in the current channel
+  of "!getlastid":
+    result = true
+    var chanId = ""
+    for (id, irc) in discordToIrc.pairs():
+      if irc == chan: 
+        chanId = id
+        break
+    var orderId = msgEditOrder.getOrDefault(chanId, -1)
+    if chanId != "" and orderId != -1: 
+      # Find last sent or edited message
+      orderId = if orderId != 0: orderId - 1 else: 9
+      var msg = msgEditHistory.getOrDefault(chanId)[orderId]
+      if msg.author.isSome():
+        let u = msg.author.get()
+        await ircClient.privmsg(
+          chan, "UID of $1 who sent/edited a message most recently is $2" % [$u, u.id]
+        )
+      else:
+        await ircClient.privmsg(
+          chan, "Can't find the user who sent the last message?!"
+        )
+    else:
+      await ircClient.privmsg(chan, "This channel doesn't seem to be bridged?")
+  # Bans a Discord user by UID
   of "!bandisc":
     result = true
     if data.len < 2:
-      await ircClient.privmsg(chan, "Usage: !ban Username#1234 or !ban 174365113899057152")
+      await ircClient.privmsg(chan, "Usage: !ban 174365113899057152")
       return
-    var id = try:
-      $parseInt(data[1])
-    except:
-      await discord.getUserID(conf.discord.guild, data[1..^1].join(" "))
+    var id = try: $parseInt(data[1]) except: ""
     if id != "":
       await discord.guildUserBan(conf.discord.guild, id)
       await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
     else:
-      await ircClient.privmsg(chan, "Unknown username")
+      await ircClient.privmsg(chan, "Unknown UID")
   else: discard
 
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
@@ -115,8 +145,7 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   # Don't send commands or their output to Discord
   if (await handleCmds(ircChan, nick, msg)): return
 
-  if not parseIrcMessage(nick, msg): return
-  else:
+  if parseIrcMessage(nick, msg):
     asyncCheck sendWebhook(ircChan, nick, msg)
 
 proc createPaste*(data: string): Future[Option[string]] {.async.} =
@@ -160,11 +189,9 @@ proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} =
   if paste.isSome():
     result = &"Code paste (or a big message), see {paste.get()}"
   else:
+    # Post a link to the message on Discord
     let url = &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
     result = &"Code paste (or a big message), see {url}"
-
-var msgEditHistory = newTable[string, seq[Message]]()
-var msgEditOrder = newTable[string, int]()
 
 proc getOriginalMsg(cid, mid: string): Option[Message] =
   result = none(Message)
@@ -179,12 +206,12 @@ proc msgHistoryStore(m: Message) =
   msgEditOrder[m.channel_id] = if lastEditId > 9: 0 else: lastEditId + 1
 
 proc msgHandleMentions(m: Message, msg: string): string =
-  ## Replace ID mentions with proper username and discriminator
+  ## Replace ID mentions with proper username (without discriminator)
   result = msg
   if not m.mentions.isSome(): return
   for user in m.mentions.get():
     let origHandle = "<@!" & $user.id & ">"
-    result = result.replace(origHandle, "@" & $user)
+    result = result.replace(origHandle, "@" & $user.username)
 
 proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
@@ -211,7 +238,7 @@ proc messageUpdate(s: Shard, m: MessageUpdate) {.async.} =
 
   # Use bold styling to highlight the username
   if m.author.isSome():
-    let toSend = &"\x02<{m.author.get()}>\x0F (edited) {msg}"
+    let toSend = &"\x02<{m.author.get().username}>\x0F (edited) {msg}"
     await ircClient.privmsg(ircChan, toSend)
 
 proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
@@ -224,7 +251,7 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
 
   # Use bold styling to highlight the username
   if m.author.isSome():
-    let toSend = &"\x02<{m.author.get()}>\x0F {msg}"
+    let toSend = &"\x02<{m.author.get().username}>\x0F {msg}"
     await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} =
@@ -233,6 +260,10 @@ proc startDiscord() {.async.} =
   discord = newShard("Bot " & conf.discord.token)
   msgCreateHandler = discord.addHandler(EventType.message_create, messageCreate)
   msgUpdateHandler = discord.addHandler(EventType.message_update, messageUpdate)
+  for irc in ircToWebhook.keys():
+    asyncCheck sendWebhook(
+      irc, "ircord", "Ircord is enabled in this channel!"
+    )
   await discord.startSession()
 
 proc startIrc() {.async.} =
