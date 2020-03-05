@@ -6,3 +6,4 @@ Bugs:
 
 Features:
 - Command support to allow OPs (or people from predefined nickname list) to an people on Discord from IRC
+- Handle mentions from IRC
