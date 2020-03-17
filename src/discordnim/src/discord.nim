@@ -345,7 +345,12 @@ proc sessionHandleSocketMessage(s: Shard) {.async, gcsafe.} =
     except:
       echo "Encountered an error while waiting for websocket data\n",
           getCurrentExceptionMsg()
-      break
+      # TODO: Should really figure out why socket closes there.
+      # Using this hack for now
+      echo "Received error, reconnecting..."
+      s.suspended = true
+      waitFor s.reconnect()
+      continue
 
     if s.compress and res.opcode == Opcode.Binary:
       let t = zlib.uncompress(res.data)
