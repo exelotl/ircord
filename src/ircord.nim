@@ -1,5 +1,5 @@
 # Stdlib
-import strformat, strutils, sequtils, json
+import strformat, strutils, sequtils, json, strscans
 import httpclient, asyncdispatch, tables, options
 # Nimble
 import discordnim/discordnim, irc
@@ -44,23 +44,20 @@ proc parseIrcMessage(nick, msg: var string): bool =
     "\1": "", "\x02": "", "\x0F": ""
   })
   # Just in a rare case we accidentally start this bot in #nim
-  if nick == "FromDiscord": return false
-  # Special cases for the Gitter <-> IRC bridge
+  if nick == "FromDiscord": result = false
+  # Special case for the Gitter <-> IRC bridge
   elif nick == "FromGitter":
-    # Get something like @["<Yardanico", " this is a test"]
-    var data = msg.split(">", 1)
-    # Probably can't happen
-    if data.len != 2: return false
-
-    (nick, msg) = (data[0][1..^1] & "[Gitter]", data[1].strip())
-    # A really rare case if someone's using the Matrix <-> Gitter bridge
+    # Parse FromGitter message
+    if scanf(msg, "<$+> $+", nick, msg):
+      nick &= "[Gitter]"
+    # Shouldn't happen anyway
+    else: result = false
+    # Special case for Gitter <-> Matrix bridge (very rare)
     if "matrixbot" in msg:
-      # Split message by ` to get
-      # @["", "grantmwilliams` like google & golang or mozilla & rust"]
-      # then split the second value in seq again to get
-      # @["grantmwilliams", " like google & golang or mozilla & rust"]
-      data = msg.split("`", 1)[1].split("`", 1)
-      (nick, msg) = (data[0] & "[Matrix]", data[1].strip())
+      if scanf(msg, "<matrixbot> `$+` $+", nick, msg):
+        nick &= "[Matrix]"
+      # Shouldn't happen either
+      else: result = false
   # Freenode <-> Matrix bridge
   elif "[m]" in nick:
     nick = nick.replace("[m]", "[Matrix]")
@@ -140,7 +137,7 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   let ircChan = event.origin
 
   var (nick, msg) = (event.nick, event.params[1])
-  echo event
+  #echo event
 
   # Don't send commands or their output to Discord
   if (await handleCmds(ircChan, nick, msg)): return
@@ -216,7 +213,7 @@ proc msgHandleMentions(m: Message, msg: string): string =
 proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
   # Store last 10 messages in history for each channel
-  echo m
+  #echo m
   msgHistoryStore(m)
 
   result = m.content.get("")
