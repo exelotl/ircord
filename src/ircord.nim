@@ -1,20 +1,19 @@
 # Stdlib
 import strformat, strutils, sequtils, json, strscans
 import httpclient, asyncdispatch, tables, options
+import math
 # Nimble
-import discordnim/discordnim, irc
+import dimscord, irc, diff
 # Our modules
 import config, utils
 
 # Global configuration object
 var conf: Config
 # Global Discord shard
-var discord: Shard
+var discord: DiscordClient
 # Global IRC client
 var ircClient: AsyncIrc
 
-var msgCreateHandler: (proc())
-var msgUpdateHandler: (proc())
 # Sequence of all webhook IDs we use
 var webhooks = newSeq[string]()
 
@@ -101,8 +100,8 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       # Find last sent or edited message
       orderId = if orderId != 0: orderId - 1 else: 9
       var msg = msgEditHistory.getOrDefault(chanId)[orderId]
-      if msg.author.isSome():
-        let u = msg.author.get()
+      if true:
+        let u = msg.author
         await ircClient.privmsg(
           chan, "UID of $1 who sent/edited a message most recently is $2" % [$u, u.id]
         )
@@ -120,7 +119,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       return
     var id = try: $parseInt(data[1]) except: ""
     if id != "":
-      await discord.guildUserBan(conf.discord.guild, id)
+      await discord.api.createGuildBan(conf.discord.guild, id)
       await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
     else:
       await ircClient.privmsg(chan, "Unknown UID")
@@ -162,7 +161,7 @@ proc createPaste*(data: string): Future[Option[string]] {.async.} =
 proc checkMessage(m: Message): Option[string] =
   result = none(string)
   # Don't handle messages which are sent by our own webhooks
-  if m.webhook_id.get("") in webhooks: return
+  if m.webhook_id in webhooks: return
   # Check if we have that channel_id in our discordToIrc mapping
   let ircChan = discordToIrc.getOrDefault(m.channel_id, "")
   if ircChan == "": return
@@ -170,9 +169,9 @@ proc checkMessage(m: Message): Option[string] =
 
 proc handleMsgAttaches*(m: Message): string =
   result = ""
-  if m.attachments.isSome() and m.attachments.get().len > 0:
+  if m.attachments.len > 0:
     result = "("
-    for i, attach in m.attachments.get():
+    for i, attach in m.attachments:
       result &= &"attachment {i+1}: {attach.url} "
     result = result.strip() & ")"
 
@@ -187,58 +186,84 @@ proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} =
     result = &"Code paste (or a big message), see {paste.get()}"
   else:
     # Post a link to the message on Discord
-    let url = &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
+    let url = &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
     result = &"Code paste (or a big message), see {url}"
-
-proc getOriginalMsg(cid, mid: string): Option[Message] =
-  result = none(Message)
-  for msg in msgEditHistory[cid]:
-    if msg.id == mid:
-      return some(msg)
-
-proc msgHistoryStore(m: Message) =
-  # Store last 10 messages in history for each channel
-  var lastEditId = msgEditOrder[m.channel_id]
-  msgEditHistory[m.channel_id][lastEditId] = m
-  msgEditOrder[m.channel_id] = if lastEditId > 9: 0 else: lastEditId + 1
 
 proc msgHandleMentions(m: Message, msg: string): string =
   ## Replace ID mentions with proper username (without discriminator)
   result = msg
-  if not m.mentions.isSome(): return
-  for user in m.mentions.get():
+  for user in m.mention_users:
     let origHandle = "<@!" & $user.id & ">"
     result = result.replace(origHandle, "@" & $user.username)
 
 proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
   # Store last 10 messages in history for each channel
-  #echo m
-  msgHistoryStore(m)
 
-  result = m.content.get("")
+  result = m.content
   result &= m.handleMsgAttaches()
   result = msgHandleMentions(m, result)
   result = await m.handleMsgPaste(result)
 
-proc messageUpdate(s: Shard, m: MessageUpdate) {.async.} =
+var lastMsgs = newSeq[int](3)
+
+proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.async.} =
   ## Called when a message is edited in Discord
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
 
-  let oldMsg = getOriginalMsg(m.channel_id, m.id)
-  # Don't know how to handle edited messages yet
-  if oldMsg.isSome(): discard
+  var msg = await m.processMsg()
+  if old.isSome():
+    let oldContent = (await old.get().processMsg()).split()
+    let newContent = msg.split()
+    var newmsgs = newSeqOfCap[string](oldContent.len)
+    # Some content diffing to produce an edited message
+    let slices = toSeq(spanSlices(oldContent, newContent))
+    for i, span in slices:
+      var newmsg = ""
+      # thanks leorize on IRC for suggesting this edit format
+      case span.tag
+      of tagReplace:
+        newmsg.add "'$1' => '$2'".format(span.a.join(" "), span.b.join(" "))
+      # We only send diff so we don't care if spans are equal
+      of tagEqual:
+        discard
+      of tagDelete:
+        newmsg.add "removed '$1'".format(span.a.join(" "))
+      of tagInsert:
+        if i != 0:
+          # stuff ...  -> stuff new ...
+          newmsg.add "'"
+          # at max 2 words for context from the left
+          let start = max(i - 2, 0)
+          for slice in slices[start .. i - 1]:
+            newmsg.add slice.b.join(" ")
+          newmsg.add " ... "
+          # and at max 2 word for context from the right
+          let startd = min(i + 1, slices.len - 1)
+          let endd = min(i + 2, slices.len - 1)
+          for slice in slices[startd .. endd]:
+            echo slice
+            for part in slice.b:
+              if part != " ":
+                newmsg.add part
+                break
+          newmsg.add " ...' => '"
+          newmsg.add span.b.join(" ")
+          newmsg.add "'"
+        else:
+          newmsg.add ""
 
-  let msg = await m.processMsg()
+      if newmsg != "":
+        newmsgs.add newmsg
+    msg = newmsgs.join(" | ")
 
   # Use bold styling to highlight the username
-  if m.author.isSome():
-    let toSend = &"\x02<{m.author.get().username}>\x0F (edited) {msg}"
-    await ircClient.privmsg(ircChan, toSend)
+  let toSend = &"\x02<{m.author.username}>\x0F (edit) {msg}"
+  await ircClient.privmsg(ircChan, toSend)
 
-proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
+proc messageCreate(s: Shard, m: Message) {.async.} =
   ## Called when a new message is posted in Discord
   let check = checkMessage(m)
   if not check.isSome(): return
@@ -247,16 +272,15 @@ proc messageCreate(s: Shard, m: MessageUpdate) {.async.} =
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
-  if m.author.isSome():
-    let toSend = &"\x02<{m.author.get().username}>\x0F {msg}"
-    await ircClient.privmsg(ircChan, toSend)
+  let toSend = &"\x02<{m.author.username}>\x0F {msg}"
+  await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} =
   ## Starts the Discord client instance and connects
   ## using token from the configuration.
-  discord = newShard("Bot " & conf.discord.token)
-  msgCreateHandler = discord.addHandler(EventType.message_create, messageCreate)
-  msgUpdateHandler = discord.addHandler(EventType.message_update, messageUpdate)
+  discord = newDiscordClient(conf.discord.token)
+  discord.events.message_create = messageCreate
+  discord.events.message_update = messageUpdate
   for irc in ircToWebhook.keys():
     asyncCheck sendWebhook(
       irc, "ircord", "Ircord is enabled in this channel!"
@@ -299,7 +323,8 @@ proc main() {.async.} =
 
 proc hook() {.noconv.} =
   echo "Quitting Ircord..."
-  waitFor discord.disconnect()
+  for _, shard in discord.shards:
+    waitFor shard.disconnect()
   ircClient.close()
   quit(0)
 
