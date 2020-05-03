@@ -1,4 +1,4 @@
-version       = "0.3.2"
+version       = "0.4.0"
 author        = "Danil Yarantsev (Yardanico)"
 description   = "Discord-IRC bridge with support for Discord webhooks"
 license       = "MIT"
@@ -6,4 +6,4 @@ srcDir        = "src"
 bin           = @["ircord"]
 
 
-requires "nim >= 1.0.0", "irc", "parsetoml", "dimscord", "https://github.com/mark-summerfield/diff"
+requires "nim >= 1.0.0", "irc", "parsetoml", "dimscord", "diff", "npeg", "nim-regex"

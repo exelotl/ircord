@@ -1,9 +1,10 @@
 # Stdlib
-import strformat, strutils, sequtils, json, strscans
+import strformat, strutils, sequtils, json, strscans, parseutils
 import httpclient, asyncdispatch, tables, options
-import math
+import math, md5
 # Nimble
 import dimscord, irc, diff
+import regex
 # Our modules
 import config, utils
 
@@ -21,15 +22,28 @@ var webhooks = newSeq[string]()
 var ircToWebhook = newTable[string, string]()
 var discordToIrc = newTable[string, string]()
 
-var msgEditHistory = newTable[string, seq[Message]]()
-var msgEditOrder = newTable[string, int]()
 
-proc sendWebhook(ircChan, username, content: string) {.async.} =
+var lastUsers = newSeq[User](5)
+var lastUserIdx = 0
+
+proc sendWebhook(ircChan, username, content: string, user = none(User)) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
+  let hash = getMD5(username.toLower())
+
   let client = newAsyncHttpClient()
   client.headers = newHttpHeaders({"Content-Type": "application/json"})
-  let data = $(%*{"username": username, "content": content})
+  # https://en.gravatar.com/site/implement/images/
+  let data = $(
+    %*{
+      "username": username, 
+      "content": content,
+      "avatar_url": &"https://www.gravatar.com/avatar/{hash}?d=robohash&size=512",
+      "allowed_mentions": {
+        "parse": ["users"]
+      }
+    }
+  )
   let resp = await client.post(ircToWebhook[ircChan], data)
   client.close()
 
@@ -42,6 +56,7 @@ proc parseIrcMessage(nick, msg: var string): bool =
     "\n": "↵", "\r": "↵", "\l": "↵",
     "\1": "", "\x02": "", "\x0F": ""
   })
+  
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
   # Special case for the Gitter <-> IRC bridge
@@ -88,7 +103,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
     await ircClient.privmsg(chan, toSend)
   # Gets a Discord UID of a user who sent the last message on Discord
   # in the current channel
-  of "!getlastid":
+  #[of "!getlastid":
     result = true
     var chanId = ""
     for (id, irc) in discordToIrc.pairs():
@@ -111,7 +126,7 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
         )
     else:
       await ircClient.privmsg(chan, "This channel doesn't seem to be bridged?")
-  # Bans a Discord user by UID
+  ]## Bans a Discord user by UID
   of "!bandisc":
     result = true
     if data.len < 2:
@@ -142,21 +157,43 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   if (await handleCmds(ircChan, nick, msg)): return
 
   if parseIrcMessage(nick, msg):
-    asyncCheck sendWebhook(ircChan, nick, msg)
+    var usedCall = false
+    var users: seq[Member]
+    var replaces: seq[(string, string)]
+    # Match @word_stuff123
+    for mention in msg.findAndCaptureAll(re"(@[[:word:]]+)"):
+      # While we still find @ in the string, also check for <@
+      # Firstly check for last 5 people in Discord who sent the message
+      var username = mention[1..^1]
+      for user in lastUsers:
+        if toLower(username) in toLower(user.username):
+          replaces.add (mention, "<@" & user.id & ">")
+      # Cache results of this call so we don't have to call it 
+      # for each @ in the same message
+      if not usedCall:
+        users = await discord.api.getGuildMembers(conf.discord.guild, 1000, "0")
+        usedCall = true
+      for user in users:
+        if toLower(username) in toLower(user.user.username):
+          replaces.add (mention, "<@" & user.user.id & ">")
+    msg = msg.multiReplace(replaces)
+    asyncCheck sendWebhook(
+      ircChan, nick, msg
+    )
 
 proc createPaste*(data: string): Future[Option[string]] {.async.} =
   ## Creates a paste with `data` on ix.io and returns some(string)
   ## If pasting failed, returns none
   result = none(string)
   var client = newAsyncHttpClient()
-  let data = "f:1=" & data
   try:
-    let resp = await client.post("http://ix.io", data)
+    let resp = await client.post("http://ix.io", "f:1=" & data)
     if resp.code == Http200:
       result = some(strip(await resp.body))
   except OSError:
     discard
-  client.close()
+  finally:
+    client.close()
 
 proc checkMessage(m: Message): Option[string] =
   result = none(string)
@@ -167,7 +204,7 @@ proc checkMessage(m: Message): Option[string] =
   if ircChan == "": return
   result = some(ircChan)
 
-proc handleMsgAttaches*(m: Message): string =
+proc handleAttaches*(m: Message): string =
   result = ""
   if m.attachments.len > 0:
     result = "("
@@ -175,37 +212,35 @@ proc handleMsgAttaches*(m: Message): string =
       result &= &"attachment {i+1}: {attach.url} "
     result = result.strip() & ")"
 
-proc handleMsgPaste*(m: Message, msg: string): Future[string] {.async.} =
+proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
   ## Handles pastes or big messages
-  result = msg
-  if not ("```" in result or result.count("\n") > 2 or result.len > 500):
-    return
-
-  let paste = await createPaste(result)
-  if paste.isSome():
-    result = &"Code paste (or a big message), see {paste.get()}"
+  # Some very smart (TM) checks for long messages or code pastes
+  result = if not (msg.count('\n') > 3 or msg.len > 500):
+    # Replace newlines with ↵ anyway
+    msg.replace("\n", "↵")
   else:
-    # Post a link to the message on Discord
-    let url = &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
-    result = &"Code paste (or a big message), see {url}"
-
-proc msgHandleMentions(m: Message, msg: string): string =
-  ## Replace ID mentions with proper username (without discriminator)
-  result = msg
-  for user in m.mention_users:
-    let origHandle = "<@!" & $user.id & ">"
-    result = result.replace(origHandle, "@" & $user.username)
+    let maybePaste = "```" in msg
+    let paste = await createPaste(msg)
+    var link: string
+    if paste.isSome():
+      link = paste.get()
+    else:
+      link = &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
+    
+    if maybePaste: 
+      &"sent a code paste, see {paste.get()}"
+    else:
+      &"sent a long message, see {paste.get()}"
 
 proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
-  # Store last 10 messages in history for each channel
-
   result = m.content
-  result &= m.handleMsgAttaches()
-  result = msgHandleMentions(m, result)
-  result = await m.handleMsgPaste(result)
+  result &= m.handleAttaches()
+  result = discord.handleObjects(m, result)
+  result = await m.handlePaste(result)
 
 var lastMsgs = newSeq[int](3)
+var lastMsgsIdx = 0
 
 proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.async.} =
   ## Called when a message is edited in Discord
@@ -215,6 +250,9 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
 
   var msg = await m.processMsg()
   if old.isSome():
+    # For some reason you can get MessageUpdate events after
+    # someone posted a link and Discord generated preview for it
+    if m.content == old.get().content: return
     let oldContent = (await old.get().processMsg()).split()
     let newContent = msg.split()
     var newmsgs = newSeqOfCap[string](oldContent.len)
@@ -232,6 +270,9 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
       of tagDelete:
         newmsg.add "removed '$1'".format(span.a.join(" "))
       of tagInsert:
+        echo span.a
+        echo span.b
+        echo slices
         if i != 0:
           # stuff ...  -> stuff new ...
           newmsg.add "'"
@@ -240,16 +281,20 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
           for slice in slices[start .. i - 1]:
             newmsg.add slice.b.join(" ")
           newmsg.add " ... "
-          # and at max 2 word for context from the right
-          let startd = min(i + 1, slices.len - 1)
-          let endd = min(i + 2, slices.len - 1)
-          for slice in slices[startd .. endd]:
-            echo slice
-            for part in slice.b:
-              if part != " ":
-                newmsg.add part
-                break
-          newmsg.add " ...' => '"
+          if i < slices.len - 1:
+            # and at max 2 word for context from the right
+            # only if this is not the last slice
+            let startd = min(i + 1, slices.len - 1)
+            let endd = min(i + 2, slices.len - 1)
+            for slice in slices[startd .. endd]:
+              echo slice
+              for part in slice.b:
+                if part != " ":
+                  newmsg.add part
+                  break
+          newmsg.add "' => '"
+          for slice in slices[start .. i - 1]:
+            newmsg.add slice.b.join(" ")
           newmsg.add span.b.join(" ")
           newmsg.add "'"
         else:
@@ -268,7 +313,10 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
-
+  
+  lastUserIdx = if lastUserIdx >= 4: 0
+  else: lastUserIdx + 1
+  lastUsers[lastUserIdx] = m.author
   let msg = await m.processMsg()
 
   # Use bold styling to highlight the username
@@ -282,10 +330,13 @@ proc startDiscord() {.async.} =
   discord.events.message_create = messageCreate
   discord.events.message_update = messageUpdate
   for irc in ircToWebhook.keys():
+    #asyncCheck discord.api.executeWebhook(wait = true)
     asyncCheck sendWebhook(
       irc, "ircord", "Ircord is enabled in this channel!"
     )
-  await discord.startSession()
+  # 1 -> GUILDS (needed for dimscord cache to work),
+  # 512 -> GUILD_MESSAGES (actual message events)
+  await discord.startSession(gateway_intents = @[1, 512])
 
 proc startIrc() {.async.} =
   ## Starts the IRC client and connects to the server and
@@ -300,8 +351,7 @@ proc startIrc() {.async.} =
     callback = handleIrc
   )
   await ircClient.connect()
-  await sleepAsync(3000)
-  await ircClient.run()
+  asyncCheck ircClient.run()
 
 proc main() {.async.} =
   echo "Starting Ircord (wait up to 10 seconds)..."
@@ -313,9 +363,6 @@ proc main() {.async.} =
 
     ircToWebhook[entry.irc] = entry.webhook
     discordToIrc[entry.discord] = entry.irc
-    # Init edit history for that Discord channel
-    msgEditHistory[entry.discord] = newSeq[Message](10)
-    msgEditOrder[entry.discord] = 0
 
   asyncCheck startDiscord()
   # Block until startIrc exits
@@ -329,4 +376,5 @@ proc hook() {.noconv.} =
   quit(0)
 
 setControlCHook(hook)
-waitFor main()
+asyncCheck main()
+runForever()
