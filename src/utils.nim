@@ -22,8 +22,8 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
   # A simple NPEG parser, done with the help of leorize from IRC
   # Why? Because npeg is cool, better than regexes :P
   let objParser = peg("discord", d: seq[Data]):
-    # Emotes like <:nim1:321515212521>
-    emote <- "<" * >(":" * +Alnum * ":") * +Digit * ">":
+    # Emotes like <:nim1:321515212521> <a:monakSHAKE:472058550164914187>
+    emote <- "<" * ?"a" * >(":" * +Alnum * ":") * +Digit * ">":
       d.add Data(kind: Emote, r: (old: $0, id: $1))
 
     # User mentions like <@!2315125125>
