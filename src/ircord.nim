@@ -336,7 +336,7 @@ proc startDiscord() {.async.} =
     )
   # 1 -> GUILDS (needed for dimscord cache to work),
   # 512 -> GUILD_MESSAGES (actual message events)
-  await discord.startSession(gateway_intents = @[1, 512])
+  await discord.startSession(gateway_intents = @[intentGuilds, intentGuildMessages])
 
 proc startIrc() {.async.} =
   ## Starts the IRC client and connects to the server and
