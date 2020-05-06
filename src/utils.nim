@@ -26,8 +26,8 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
     emote <- "<" * ?"a" * >(":" * +Alnum * ":") * +Digit * ">":
       d.add Data(kind: Emote, r: (old: $0, id: $1))
 
-    # User mentions like <@!2315125125>
-    mention <- "<@!" * >(+Digit) * ">":
+    # User mentions like <@!2315125125> <@408815590170689546>
+    mention <- "<@" * ?"!" * >(+Digit) * ">":
       # logic for handling mentions
       d.add Data(kind: Mention, r: (old: $0, id: $1))
 

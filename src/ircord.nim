@@ -198,7 +198,7 @@ proc createPaste*(data: string): Future[Option[string]] {.async.} =
 proc checkMessage(m: Message): Option[string] =
   result = none(string)
   # Don't handle messages which are sent by our own webhooks
-  if m.webhook_id in webhooks: return
+  if m.webhook_id.isSome() and m.webhook_id.get() in webhooks: return
   # Check if we have that channel_id in our discordToIrc mapping
   let ircChan = discordToIrc.getOrDefault(m.channel_id, "")
   if ircChan == "": return
