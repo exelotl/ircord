@@ -380,7 +380,7 @@ proc main() {.async.} =
 proc hook() {.noconv.} =
   echo "Quitting Ircord..."
   for _, shard in discord.shards:
-    waitFor shard.disconnect()
+    waitFor shard.disconnect(shouldReconnect = false)
   ircClient.close()
   quit(0)
 
