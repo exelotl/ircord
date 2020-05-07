@@ -1,6 +1,24 @@
 # Ircord - Discord <-> IRC bridge written in Nim
-Copy the config file from ircord_default.toml to ircord.toml and edit to your liking.
+This project is an IRC <-> Discord bridge, mainly created for Nim IRC channels.
+Ircord only depends on OpenSSL (for https), everything else is pure-Nim.
 
-Very early WIP version, except bugs and crashes.
+This library is possible by:
 
-There's a few changes in discordnim lib shipped with this bridge, I should probably properly PR the changes.
+- https://github.com/krisppurg/dimscord library by @krisppurg who also helped me with better understand Discord API :)
+
+- https://github.com/nim-lang/irc library by @dom96 for IRC
+
+- https://github.com/nitely/nim-regex and https://github.com/zevv/npeg for some text parsing.
+
+- https://github.com/NimParsers/parsetoml for TOML config parsing.
+
+- https://github.com/mark-summerfield/diff or message edits diffing.
+
+- https://ix.io for handling big messages/code snippets.
+
+
+The bot is asynchronous and should be fully cross-platform (there's no OS-specific stuff in the bot).
+
+To configure the bot, copy the config file from ircord_default.toml to ircord.toml and edit to your liking.
+You'll need a Discord bot token (it's used in Ircord for mentioning users in Discord from IRC), and
+a mapping with IRC channel name, Discord channel ID and a webhook URL for that channel.
