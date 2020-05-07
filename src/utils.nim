@@ -20,7 +20,6 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
       r: tuple[old, id: string]
 
   # A simple NPEG parser, done with the help of leorize from IRC
-  # Why? Because npeg is cool, better than regexes :P
   let objParser = peg("discord", d: seq[Data]):
     # Emotes like <:nim1:321515212521> <a:monakSHAKE:472058550164914187>
     emote <- "<" * ?"a" * >(":" * +Alnum * ":") * +Digit * ">":
@@ -48,8 +47,11 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
   for obj in data:
     case obj.kind
     of Emote: result = result.replace(obj.r.old, obj.r.id)
-    of Mention: 
-      result = result.replace(obj.r.old, "@" & $msg.author.username)
+    of Mention:
+      # Iterate over all mentioned users and find the one we need
+      for user in msg.mention_users:
+        if user.id == obj.r.id:
+          result = result.replace(obj.r.old, "@" & $user.username)
     of Channel:
       let chan = s.cache.guildChannels.getOrDefault(obj.r.id)
       if not chan.isNil():

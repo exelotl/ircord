@@ -51,11 +51,20 @@ proc parseIrcMessage(nick, msg: var string): bool =
   result = true
   # Replace some special chars or strings
   # also replaces IRC characters used for styling
+  # (maybe we'll want to convert these to markdown later in the future)
+  # https://en.wikichip.org/wiki/irc/colors
+  # https://github.com/myano/jenni/wiki/IRC-String-Formatting
   msg = msg.multiReplace({
     "ACTION": "",
     "\n": "↵", "\r": "↵", "\l": "↵",
-    "\1": "", "\x02": "", "\x0F": ""
+    "\1": ""
   })
+  # This is good enough since we don't exactly need to 
+  # process 100k+ messages per second, although in the future
+  # it might be worth to create a hand-written version
+  # https://stackoverflow.com/a/10567935/5476128
+  const stripIrc = re"[\x02\x1F\x0F\x16\x1D]|\x03(\d\d?(,\d\d?)?)?"
+  msg = msg.replace(stripIrc, "")
   
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
@@ -236,7 +245,7 @@ proc processMsg(m: Message): Future[string] {.async.} =
   ## Does all needed modifications on message conents before sending it
   result = m.content
   result &= m.handleAttaches()
-  result = discord.handleObjects(m, result)
+  result = handleObjects(discord, m, result)
   result = await m.handlePaste(result)
 
 var lastMsgs = newSeq[int](3)
