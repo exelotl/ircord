@@ -2,7 +2,7 @@
 This project is an IRC <-> Discord bridge, mainly created for Nim IRC channels.
 Ircord only depends on OpenSSL (for https), everything else is pure-Nim.
 
-This library is possible by:
+This library is made possible by:
 
 - https://github.com/krisppurg/dimscord library by @krisppurg who also helped me with better understand Discord API :)
 
