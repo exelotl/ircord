@@ -1,7 +1,7 @@
 # Stdlib
 import strformat, strutils, sequtils, json, strscans, parseutils
 import httpclient, asyncdispatch, tables, options
-import math, md5
+import math, md5, times
 # Nimble
 import dimscord, irc, diff
 import regex
@@ -22,6 +22,8 @@ var webhooks = newSeq[string]()
 var ircToWebhook = newTable[string, string]()
 var discordToIrc = newTable[string, string]()
 
+# Timestamp of when the bot was started
+var startTime = getTime()
 
 var lastUsers = newSeq[User](5)
 var lastUserIdx = 0
@@ -88,7 +90,7 @@ proc parseIrcMessage(nick, msg: var string): bool =
     # Specify (in the username) that this user is from IRC
     nick &= "[IRC]"
 
-proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
+proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
   result = false
   # Only accept commands from whitelisted users and only with !
   if nick notin conf.irc.adminList or msg[0] != '!': return
@@ -110,6 +112,9 @@ proc handleCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
         toSend &= $user & " has Discord UID " & user.id & ", "
     else: toSend = "Unknown username"
     await ircClient.privmsg(chan, toSend)
+  of "!status":
+    await ircClient.privmsg(chan, fmt"Uptime - {getTime() - startTime}")
+
   # Gets a Discord UID of a user who sent the last message on Discord
   # in the current channel
   #[of "!getlastid":
@@ -163,7 +168,7 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   #echo event
 
   # Don't send commands or their output to Discord
-  if (await handleCmds(ircChan, nick, msg)): return
+  if (await handleIrcCmds(ircChan, nick, msg)): return
 
   if parseIrcMessage(nick, msg):
     var usedCall = false
@@ -241,12 +246,31 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
     else:
       &"sent a long message, see {paste.get()}"
 
-proc processMsg(m: Message): Future[string] {.async.} =
+proc handleDiscordCmds(m: Message): Future[bool] {.async.} = 
+  result = false
+  # Only commands with !
+  if m.content[0] != '!': return
+  let data = m.content.split(" ")
+  if data.len == 0: return
+  case data[0]
+  # Gets a Discord UID of all users which match the string
+  of "!status":
+    let status = fmt"Uptime - {getTime() - startTime}"
+    discard await discord.api.sendMessage(m.channel_id, status)
+  else: discard
+
+
+proc processMsg(m: Message): Future[Option[string]] {.async.} =
   ## Does all needed modifications on message conents before sending it
-  result = m.content
-  result &= m.handleAttaches()
-  result = handleObjects(discord, m, result)
-  result = await m.handlePaste(result)
+  var data = m.content
+  if not (await handleDiscordCmds(m)): 
+    data &= m.handleAttaches()
+    data = handleObjects(discord, m, data)
+    data = await m.handlePaste(data)
+    result = some(data)
+  else:
+    result = none(string)
+
 
 var lastMsgs = newSeq[int](3)
 var lastMsgsIdx = 0
@@ -257,12 +281,17 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
   if not check.isSome(): return
   let ircChan = check.get()
 
-  var msg = await m.processMsg()
+  let msgOpt = await m.processMsg()
+  if not msgOpt.isSome(): return
+  var msg = msgOpt.get()
   if old.isSome():
     # For some reason you can get MessageUpdate events after
     # someone posted a link and Discord generated preview for it
     if m.content == old.get().content: return
-    let oldContent = (await old.get().processMsg()).split()
+    let oldContent = block:
+      let old = await old.get().processMsg()
+      if not old.isSome(): return
+      old.get().split()
     let newContent = msg.split()
     var newmsgs = newSeqOfCap[string](oldContent.len)
     # Some content diffing to produce an edited message
@@ -326,7 +355,9 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   lastUserIdx = if lastUserIdx >= 4: 0
   else: lastUserIdx + 1
   lastUsers[lastUserIdx] = m.author
-  let msg = await m.processMsg()
+  let msgOpt = await m.processMsg()
+  if not msgOpt.isSome(): return
+  let msg = msgOpt.get()
 
   # Use bold styling to highlight the username
   let toSend = &"\x02<{m.author.username}>\x0F {msg}"
@@ -350,16 +381,22 @@ proc startDiscord() {.async.} =
 proc startIrc() {.async.} =
   ## Starts the IRC client and connects to the server and
   ## joins channels specified in the configuration.
+  let ircChans = conf.mapping.mapIt(it.irc)
   ircClient = newAsyncIrc(
     address = conf.irc.server,
     port = Port(conf.irc.port),
     nick = conf.irc.nickname,
+    user = conf.irc.nickname,
+    realname = conf.irc.nickname,
     serverPass = conf.irc.password,
     # All IRC channels we need to connect to
-    joinChans = conf.mapping.mapIt(it.irc),
+    joinChans = ircChans,
     callback = handleIrc
   )
   await ircClient.connect()
+  # XXX: Is this the correct place?
+  #for chan in ircChans:
+  #  await ircClient.send(fmt"/mode {chan} +c")
   asyncCheck ircClient.run()
 
 proc main() {.async.} =
