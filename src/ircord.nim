@@ -247,7 +247,7 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
 proc handleDiscordCmds(m: Message): Future[bool] {.async.} = 
   result = false
   # Only commands with !
-  if m.content[0] != '!': return
+  if m.content.len == 0 or m.content[0] != '!': return
   let data = m.content.split(" ")
   if data.len == 0: return
   case data[0]
