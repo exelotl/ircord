@@ -223,7 +223,7 @@ proc handleAttaches*(m: Message): string =
   if m.attachments.len > 0:
     result = "("
     for i, attach in m.attachments:
-      result &= &"attachment {i+1}: {attach.url} "
+      result &= &"attachment {i+1}: {attach.proxy_url} "
     result = result.strip() & ")"
 
 proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
