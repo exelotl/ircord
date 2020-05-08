@@ -235,16 +235,14 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
   else:
     let maybePaste = "```" in msg
     let paste = await createPaste(msg)
-    var link: string
-    if paste.isSome():
-      link = paste.get()
+    let link = if paste.isSome():
+      paste.get()
     else:
-      link = &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
-    
+      &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
     if maybePaste: 
-      &"sent a code paste, see {paste.get()}"
+      &"sent a code paste, see {link}"
     else:
-      &"sent a long message, see {paste.get()}"
+      &"sent a long message, see {link}"
 
 proc handleDiscordCmds(m: Message): Future[bool] {.async.} = 
   result = false
