@@ -2,15 +2,15 @@
 This project is an IRC <-> Discord bridge, mainly created for Nim IRC channels.
 Ircord only depends on OpenSSL (for https), everything else is pure-Nim.
 
-This library is possible by:
+This library is made possible by:
 
-- https://github.com/krisppurg/dimscord library by @krisppurg who also helped me with better understand Discord API :)
+- https://github.com/krisppurg/dimscord library by @krisppurg who also helped me to understand Discord API better :)
 
-- https://github.com/nim-lang/irc library by @dom96 for IRC
+- https://github.com/nim-lang/irc library by @dom96
 
 - https://github.com/nitely/nim-regex and https://github.com/zevv/npeg for some text parsing.
 
-- https://github.com/NimParsers/parsetoml for TOML config parsing.
+- https://github.com/NimParsers/parsetoml for TOML configuration.
 
 - https://github.com/mark-summerfield/diff or message edits diffing.
 
