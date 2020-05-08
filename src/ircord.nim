@@ -238,7 +238,9 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
     let link = if paste.isSome():
       paste.get()
     else:
-      &"https://discordapp.com/channels/{m.guild_id}/{m.channel_id}/{m.id}"
+      # what?
+      if not m.guild_id.isSome(): return
+      &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
     if maybePaste: 
       &"sent a code paste, see {link}"
     else:
