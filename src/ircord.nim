@@ -165,32 +165,28 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   let ircChan = event.origin
 
   var (nick, msg) = (event.nick, event.params[1])
-  #echo event
 
   # Don't send commands or their output to Discord
   if (await handleIrcCmds(ircChan, nick, msg)): return
 
   if parseIrcMessage(nick, msg):
-    var usedCall = false
-    var users: seq[Member]
-    var replaces: seq[(string, string)]
-    # Match @word_stuff123
-    for mention in msg.findAndCaptureAll(re"(@[[:word:]]+)"):
-      # While we still find @ in the string, also check for <@
-      # Firstly check for last 5 people in Discord who sent the message
-      var username = mention[1..^1]
-      for user in lastUsers:
-        if toLower(username) in toLower(user.username):
-          replaces.add (mention, "<@" & user.id & ">")
-      # Cache results of this call so we don't have to call it 
-      # for each @ in the same message
-      if not usedCall:
-        users = await discord.api.getGuildMembers(conf.discord.guild, 1000, "0")
-        usedCall = true
-      for user in users:
-        if toLower(username) in toLower(user.user.username):
-          replaces.add (mention, "<@" & user.user.id & ">")
-    msg = msg.multiReplace(replaces)
+    block mentions:
+      # Sorry disbot, but you _can't_ mention anyone :(
+      if nick == "disbot": break mentions
+      var replaces: seq[(string, string)]
+      # Match @word_stuff123
+      for mention in msg.findAndCaptureAll(re"(@[[:word:]]+)"):
+        # While we still find @ in the string, also check for <@
+        # Firstly check for last 5 people in Discord who sent the message
+        var username = mention[1..^1]
+        for user in lastUsers:
+          if toLower(username) in toLower(user.username):
+            replaces.add (mention, "<@" & user.id & ">")
+        # Search through all members on the channel (cached locally so it's fine)
+        for id, member in discord.cache.guilds[conf.discord.guild].members:
+          if toLower(member.user.username).startsWith(username):
+            replaces.add (mention, "<@" & id & ">")
+      msg = msg.multiReplace(replaces)
     asyncCheck sendWebhook(
       ircChan, nick, msg
     )
@@ -204,8 +200,10 @@ proc createPaste*(data: string): Future[Option[string]] {.async.} =
     let resp = await client.post("http://ix.io", "f:1=" & data)
     if resp.code == Http200:
       result = some(strip(await resp.body))
-  except OSError:
-    discard
+  # I know this is bad but we want at least some *stability*
+  except:
+    echo "Got error trying to do an ix.io paste:"
+    echo getStackTrace()
   finally:
     client.close()
 
@@ -219,12 +217,8 @@ proc checkMessage(m: Message): Option[string] =
   result = some(ircChan)
 
 proc handleAttaches*(m: Message): string =
-  result = ""
   if m.attachments.len > 0:
-    result = "("
-    for i, attach in m.attachments:
-      result &= &"attachment {i+1}: {attach.proxy_url} "
-    result = result.strip() & ")"
+    result = " " & m.attachments.mapIt(it.proxy_url).join(" ")
 
 proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
   ## Handles pastes or big messages
@@ -233,18 +227,21 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
     # Replace newlines with ↵ anyway
     msg.replace("\n", "↵")
   else:
+    # Not the best way, but it works for most cases
     let maybePaste = "```" in msg
     let paste = await createPaste(msg)
+    # If we successfully pasted on ix.io
     let link = if paste.isSome():
       paste.get()
     else:
-      # what?
-      if not m.guild_id.isSome(): return
+      # just to be safe I guess
+      if not m.guildId.isSome(): return
       &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
     if maybePaste: 
-      &"sent a code paste, see {link}"
+      # In italics
+      &"\x1Dsent a code paste, see\x1D {link}"
     else:
-      &"sent a long message, see {link}"
+      &"\x1Dsent a long message, see\x1D {link}"
 
 proc handleDiscordCmds(m: Message): Future[bool] {.async.} = 
   result = false
@@ -256,17 +253,19 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   # Gets a Discord UID of all users which match the string
   of "!status":
     let status = fmt"Uptime - {getTime() - startTime}"
-    discard await discord.api.sendMessage(m.channel_id, status)
+    discard await discord.api.sendMessage(m.channelId, status)
   else: discard
-
 
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
   ## Does all needed modifications on message conents before sending it
   var data = m.content
+  # If this is not a command
   if not (await handleDiscordCmds(m)): 
     data &= m.handleAttaches()
     data = handleObjects(discord, m, data)
     data = await m.handlePaste(data)
+    # Add a note that we actually read that message
+    #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
     result = some(data)
   else:
     result = none(string)
@@ -367,16 +366,17 @@ proc startDiscord() {.async.} =
   ## Starts the Discord client instance and connects
   ## using token from the configuration.
   discord = newDiscordClient(conf.discord.token)
-  discord.events.message_create = messageCreate
-  discord.events.message_update = messageUpdate
-  for irc in ircToWebhook.keys():
-    #asyncCheck discord.api.executeWebhook(wait = true)
-    asyncCheck sendWebhook(
-      irc, "ircord", "Ircord is enabled in this channel!"
-    )
-  # 1 -> GUILDS (needed for dimscord cache to work),
-  # 512 -> GUILD_MESSAGES (actual message events)
-  await discord.startSession(gateway_intents = @[intentGuilds, intentGuildMessages])
+  discord.events.messageCreate = messageCreate
+  discord.events.messageUpdate = messageUpdate
+  # intentGuilds -> receive initial info about the server
+  # intentGuildMessages -> obviously to receive the messages themselves
+  # intentGuildMembers -> to receive events for member join/leave, so
+  # the cache can dynamically change and we can use it for mentions
+  # !!! for intentGuildMembers we need to enable SERVER MEMBERS INTENT
+  # in bot settings
+  await discord.startSession(
+    gatewayIntents = @[intentGuilds, intentGuildMembers, intentGuildMessages]
+  )
 
 proc startIrc() {.async.} =
   ## Starts the IRC client and connects to the server and
