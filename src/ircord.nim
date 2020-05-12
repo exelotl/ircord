@@ -183,11 +183,9 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
           if username in toLower(user.username):
             replaces.add (mention, "<@" & user.id & ">")
         # Search through all members on the channel (cached locally so it's fine)
-        if conf.discord.guild in discord.cache.guilds:
-          echo discord.cache.guilds[conf.discord.guild].members.len()
-          for id, member in discord.cache.guilds[conf.discord.guild].members:
-            if toLower(member.user.username).startsWith(username):
-              replaces.add (mention, "<@" & id & ">")
+        for id, user in discord.cache.users:
+          if toLower(user.username).startsWith(username):
+            replaces.add (mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
     asyncCheck sendWebhook(
       ircChan, nick, msg
@@ -347,8 +345,13 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
   let toSend = &"\x02<{m.author.username}>\x0F (edit) {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
+var cached = false
+
 proc messageCreate(s: Shard, m: Message) {.async.} =
   ## Called when a new message is posted in Discord
+  if not cached:
+    await s.requestGuildMembers(@[conf.discord.guild], "", 0)
+    cached = true
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
@@ -377,7 +380,7 @@ proc startDiscord() {.async.} =
   # !!! for intentGuildMembers we need to enable SERVER MEMBERS INTENT
   # in bot settings
   await discord.startSession(
-    gatewayIntents = @[intentGuilds, intentGuildMembers, intentGuildMessages]
+    gatewayIntents = {intentGuilds, intentGuildMembers, intentGuildMessages}
   )
 
 proc startIrc() {.async.} =
