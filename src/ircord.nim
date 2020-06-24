@@ -1,7 +1,9 @@
 # Stdlib
-import strformat, strutils, sequtils, json, strscans, parseutils
-import httpclient, asyncdispatch, tables, options
-import math, md5, times
+import std / [
+  strformat, strutils, sequtils, json, strscans, parseutils,
+  httpclient, uri, asyncdispatch, tables, options,
+  math, md5, times
+]
 # Nimble
 import dimscord, irc, diff
 import regex
@@ -171,7 +173,7 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
 
   if parseIrcMessage(nick, msg):
     block mentions:
-      # Sorry disbot, but you _can't_ mention anyone :(
+      # Sorry disbot, but you _can't_ mention people :(
       if nick == "disbot": break mentions
       var replaces: seq[(string, string)]
       # Match @word_stuff123
@@ -180,10 +182,12 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
         # Firstly check for last 5 people in Discord who sent the message
         var username = toLower(mention[1..^1])
         for user in lastUsers:
+          # maybe we just started and not all entries are populated
+          if user.isNil(): continue
           if username in toLower(user.username):
             replaces.add (mention, "<@" & user.id & ">")
         # Search through all members on the channel (cached locally so it's fine)
-        for id, user in discord.cache.users:
+        for id, user in discord.shards[0].cache.users:
           if toLower(user.username).startsWith(username):
             replaces.add (mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
@@ -191,19 +195,29 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
       ircChan, nick, msg
     )
 
-proc createPaste*(data: string): Future[Option[string]] {.async.} =
+type
+  PasteKind* = enum IxIo, PasteRs
+
+proc createPaste*(data: string, kind = IxIo): Future[Option[string]] {.async.} =
   ## Creates a paste with `data` on ix.io and returns some(string)
   ## If pasting failed, returns none
   result = none(string)
   var client = newAsyncHttpClient()
   try:
-    let resp = await client.post("http://ix.io", "f:1=" & data)
-    if resp.code == Http200:
-      result = some(strip(await resp.body))
+    case kind
+    of IxIo:
+      let resp = await client.post("http://ix.io", "f:1=" & encodeUrl(data))
+      if resp.code == Http200:
+        result = some strip(await resp.body)
+    of PasteRs:
+      let resp = await client.post("https://paste.rs/", data)
+      if resp.code in {Http201, Http206}:
+        result = some strip(await resp.body)
   # I know this is bad but we want at least some *stability*
   except:
-    echo "Got error trying to do an ix.io paste:"
+    echo "Got error trying to do a paste: "
     echo getStackTrace()
+    echo getCurrentExceptionMsg()
   finally:
     client.close()
 
@@ -228,16 +242,25 @@ proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
     msg.replace("\n", "↵")
   else:
     # Not the best way, but it works for most cases
-    let maybePaste = "```" in msg
+    let maybeCodePaste = "```" in msg
     let paste = await createPaste(msg)
     # If we successfully pasted on ix.io
     let link = if paste.isSome():
-      paste.get()
+      let pasteLink = paste.get()
+      if maybeCodePaste:
+        let ixid = pasteLink.rsplit("/")[^1]
+        &"https://play.nim-lang.org/#ix={ixid}"
+      else:
+        pasteLink
     else:
-      # just to be safe I guess
-      if not m.guildId.isSome(): return
-      &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
-    if maybePaste: 
+      let secondPasta = await createPaste(msg, PasteRs)
+      if secondPasta.isSome():
+        secondPasta.get()
+      else:
+        # just to be safe I guess
+        if not m.guildId.isSome(): return
+        &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
+    if maybeCodePaste: 
       # In italics
       &"\x1Dsent a code paste, see\x1D {link}"
     else:
@@ -281,8 +304,9 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
   let ircChan = check.get()
 
   let msgOpt = await m.processMsg()
-  if not msgOpt.isSome(): return
+  if not msgOpt.isSome():  return
   var msg = msgOpt.get()
+
   if old.isSome():
     # For some reason you can get MessageUpdate events after
     # someone posted a link and Discord generated preview for it
@@ -364,7 +388,7 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   let msg = msgOpt.get()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x0F {msg}"
+  let toSend = &"\x02<{m.author.username}>\x02 {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} =

@@ -1,7 +1,6 @@
 import asyncdispatch, strutils, tables, options
 import dimscord
 import npeg
-
 proc getUsers*(s: DiscordClient, guild, part: string): Future[seq[User]] {.async.} = 
   ## Get all users whose usernames contain `part` string
   result = @[]
@@ -43,7 +42,6 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
   let match = objParser.match(result, data)
   if not match.ok: 
     return
-  
   for obj in data:
     case obj.kind
     of Emote: result = result.replace(obj.r.old, obj.r.id)
@@ -53,6 +51,6 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
         if user.id == obj.r.id:
           result = result.replace(obj.r.old, "@" & $user.username)
     of Channel:
-      let chan = s.cache.guildChannels.getOrDefault(obj.r.id)
+      let chan = s.shards[0].cache.guilds.getOrDefault(obj.r.id)
       if not chan.isNil():
         result = result.replace(obj.r.old, "#" & chan.name)

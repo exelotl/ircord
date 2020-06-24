@@ -6,4 +6,4 @@ srcDir        = "src"
 bin           = @["ircord"]
 
 
-requires "nim >= 1.0.0", "irc", "parsetoml", "dimscord", "diff", "npeg", "nim-regex"
+requires "nim >= 1.0.0", "irc", "parsetoml", "dimscord#devel", "diff", "npeg", "regex"
