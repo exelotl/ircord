@@ -2,6 +2,13 @@
 This project is an IRC <-> Discord bridge, mainly created for Nim IRC channels.
 Ircord only depends on OpenSSL (for https), everything else is pure-Nim.
 
+
+IRC admin commands (the command itself and the response are not sent to Discord)
+- `!getdiscid <string>` - shows IDs of all Discord users which have that string in their name
+- `!getlastid` - shows ID of the last person who sent a message in the current channel on Discord
+- `!bandisc <number>` - bans the person with that ID on the Discord server
+- `!status` - shows bot uptime
+
 This library is made possible by:
 
 - https://github.com/krisppurg/dimscord library by @krisppurg who also helped me to understand Discord API better :)

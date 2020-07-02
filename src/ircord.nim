@@ -37,6 +37,7 @@ proc getUptime: string =
 proc sendWebhook(ircChan, username, content: string, user = none(User)) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
+  # Get hash of the username to generate unique avatars, but unique to each IRC user
   let hash = getMD5(username.toLower())
 
   let client = newAsyncHttpClient()
@@ -96,16 +97,38 @@ proc parseIrcMessage(nick, msg: var string): bool =
     # Specify (in the username) that this user is from IRC
     nick &= "[IRC]"
 
+var 
+  ircAccResp: Future[(string, string)] # Future for checking ACC status
+  # Table with last users for channels, discord_id -> (username, user_id)
+  lastMessages: Table[string, (string, string)] 
+
 proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
-  result = false
-  # Only accept commands from whitelisted users and only with !
   if nick notin conf.irc.adminList or msg[0] != '!': return
+  # Create a new future, we don't really handle race conditions here
+  # since we assume that admin commands are extremely rare.
+  if ircAccResp.isNil():
+    ircAccResp = newFuture[(string, string)]()
+  await ircClient.privmsg("NickServ", &"acc {nick}")
+  let acc = await ircAccResp
+  # Nullify the future
+  ircAccResp = nil
+  #[
+    0 - account or user does not exist
+    1 - account exists but user is not logged in
+    2 - user is not logged in but recognized
+    3 - user is logged in <- that's the only one we care about
+  ]#
+  if cmpIgnoreCase(acc[0], nick) != 0 or acc[1] != "3":
+    # The user is apparently not identified or not recognized
+    return
+  # Parsing the actual commands
   let data = msg.split(" ")
   if data.len == 0: return
+  # It seems to be an actual command
+  result = true
   case data[0]
   # Gets a Discord UID of all users which match the string
   of "!getdiscid":
-    result = true
     if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !getid Username#1234")
       return
@@ -120,35 +143,25 @@ proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
     await ircClient.privmsg(chan, toSend)
   of "!status":
     await ircClient.privmsg(chan, getUptime())
-
   # Gets a Discord UID of a user who sent the last message on Discord
   # in the current channel
-  #[of "!getlastid":
-    result = true
+  of "!getlastid":
     var chanId = ""
     for (id, irc) in discordToIrc.pairs():
       if irc == chan: 
         chanId = id
         break
-    var orderId = msgEditOrder.getOrDefault(chanId, -1)
-    if chanId != "" and orderId != -1: 
-      # Find last sent or edited message
-      orderId = if orderId != 0: orderId - 1 else: 9
-      var msg = msgEditHistory.getOrDefault(chanId)[orderId]
-      if true:
-        let u = msg.author
-        await ircClient.privmsg(
-          chan, "UID of $1 who sent/edited a message most recently is $2" % [$u, u.id]
-        )
-      else:
-        await ircClient.privmsg(
-          chan, "Can't find the user who sent the last message?!"
-        )
+    var (lastUsername, lastId) = lastMessages.getOrDefault(chanId)
+    if lastId != "": 
+      await ircClient.privmsg(
+        chan, fmt"UID of {lastUsername} who sent/edited a message most recently on Discord is {lastId}"
+      )
     else:
-      await ircClient.privmsg(chan, "This channel doesn't seem to be bridged?")
-  ]## Bans a Discord user by UID
+      await ircClient.privmsg(
+        chan, "Don't have info for the current channel yet."
+      )
+  # Bans a Discord user by UID
   of "!bandisc":
-    result = true
     if data.len < 2:
       await ircClient.privmsg(chan, "Usage: !ban 174365113899057152")
       return
@@ -158,15 +171,27 @@ proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
       await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
     else:
       await ircClient.privmsg(chan, "Unknown UID")
-  else: discard
+  # If an admin sent a message starting with ! and it wasn't a command
+  else:
+    result = false
 
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
-  ## Handles all events received by IRC client instance
+  ## Handles all events received by the IRC client instance
   if event.typ != EvMsg or event.params.len < 2:
     return
 
+  # Complete the ircAccResp with the response for the access
+  # data of the user (admin)
+  elif event.cmd == MNotice and event.nick == "NickServ":
+    let data = event.params[1].strip().split(" ")
+    if data.len == 3 and data[1] == "ACC":
+      # Get the data back to the admin checking function
+      ircAccResp.complete((data[0], data[2]))
+    # No need to send that message
+    return
   # Check that it's a message sent to the channel
-  elif event.cmd != MPrivMsg or event.params[0][0] != '#': return
+  elif event.cmd != MPrivMsg or event.origin[0] != '#':
+    return
 
   let ircChan = event.origin
 
@@ -276,12 +301,14 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   if m.content.len == 0 or m.content[0] != '!': return
   let data = m.content.split(" ")
   if data.len == 0: return
+  # Maybe we should add ability to ban people on IRC from Discord too.
+  #[ 
   case data[0]
   # Gets a Discord UID of all users which match the string
   of "!status":
-    # use minutes as minimal precision
     discard await discord.api.sendMessage(m.channelId, getUptime())
   else: discard
+  ]#
 
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
   ## Does all needed modifications on message conents before sending it
@@ -294,6 +321,8 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
     # Add a note that we actually read that message
     #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
     result = some(data)
+    # Remember that user
+    lastMessages[m.channel_id] = (m.author.username, m.author.id)
   else:
     result = none(string)
 
