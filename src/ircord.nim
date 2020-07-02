@@ -30,6 +30,10 @@ var startTime = getTime()
 var lastUsers = newSeq[User](5)
 var lastUserIdx = 0
 
+proc getUptime: string = 
+  let uptime = $initDuration(minutes = (getTime() - startTime).inMinutes)
+  result = fmt"Uptime - {uptime}"
+
 proc sendWebhook(ircChan, username, content: string, user = none(User)) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
@@ -115,7 +119,7 @@ proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
     else: toSend = "Unknown username"
     await ircClient.privmsg(chan, toSend)
   of "!status":
-    await ircClient.privmsg(chan, fmt"Uptime - {getTime() - startTime}")
+    await ircClient.privmsg(chan, getUptime())
 
   # Gets a Discord UID of a user who sent the last message on Discord
   # in the current channel
@@ -275,8 +279,8 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   case data[0]
   # Gets a Discord UID of all users which match the string
   of "!status":
-    let status = fmt"Uptime - {getTime() - startTime}"
-    discard await discord.api.sendMessage(m.channelId, status)
+    # use minutes as minimal precision
+    discard await discord.api.sendMessage(m.channelId, getUptime())
   else: discard
 
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
@@ -374,7 +378,7 @@ var cached = false
 proc messageCreate(s: Shard, m: Message) {.async.} =
   ## Called when a new message is posted in Discord
   if not cached:
-    await s.requestGuildMembers(@[conf.discord.guild], "", 0)
+    await s.requestGuildMembers(@[conf.discord.guild], limit = 0)
     cached = true
   let check = checkMessage(m)
   if not check.isSome(): return

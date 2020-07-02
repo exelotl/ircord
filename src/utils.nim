@@ -4,11 +4,17 @@ import npeg
 proc getUsers*(s: DiscordClient, guild, part: string): Future[seq[User]] {.async.} = 
   ## Get all users whose usernames contain `part` string
   result = @[]
+  #[
   var data = await s.api.getGuildMembers(guild, 1000, "0")
+  echo data.len
   for member in data:
-    if part in $member.user:
+    if part in member.user.username:
       let user = member.user
       result.add(user)
+  ]#
+  for user in s.shards[0].cache.users.values:
+    if part in user.username:
+      result.add user
 
 proc handleObjects*(s: DiscordClient, msg: Message, content: string): string = 
   result = content
