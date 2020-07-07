@@ -2,7 +2,7 @@
 import std / [
   strformat, strutils, sequtils, json, strscans, parseutils,
   httpclient, uri, asyncdispatch, tables, options,
-  math, md5, times
+  math, md5, times, segfaults
 ]
 # Nimble
 import dimscord, irc, diff
@@ -322,7 +322,12 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
     #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
     result = some(data)
     # Remember that user
-    lastMessages[m.channel_id] = (m.author.username, m.author.id)
+    if m.isNil():
+      echo "m is nil?? why?"
+    elif m.author.isNil():
+      echo "m.author is nil?? why??"
+    else:
+      lastMessages[m.channel_id] = (m.author.username, m.author.id)
   else:
     result = none(string)
 
