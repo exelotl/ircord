@@ -1,6 +1,140 @@
-import asyncdispatch, strutils, tables, options
+import asyncdispatch, strutils, tables, parseutils
 import dimscord
-import npeg, npeg/lib/utf8
+import npeg
+
+type
+  FormatAtom = object
+    # Toggles
+    bold, italic, underline, strike, mono, color: bool
+    # Background and foreground colors
+    bg, fg: int
+    text: string
+
+const
+  boldC = '\x02'
+  italicC = '\x1D'
+  underlineC = '\x1F'
+  strikeC = '\x1E'
+  monoC = '\x11'
+  colorC = '\x03'
+  zeroWidth = "​"
+  anyFormatting = {boldC, italicC, underlineC, strikeC, monoC, colorC}
+
+proc ircToMd*(msg: string): string = 
+  ## A relatively simple IRC to Markdown parser/converter
+  ## No complicated AST or anything like that, just plain simple loops
+  ## and storing states of the formatting
+  echo repr msg
+  result = newStringOfCap(msg.len)
+  var
+    bold, italic, underline, strikethrough, monospace, color = false
+    curBackground, curForeground = -1
+  
+  var i = 0
+  var data: seq[FormatAtom]
+  var curAtom = FormatAtom()
+  while i < msg.len - 1:
+    var c = msg[i]
+    case c
+    # Togglable formatting
+    of boldC: 
+      bold = not bold
+    of italicC: 
+      italic = not italic
+    of underlineC: 
+      underline = not underline
+    of strikeC: 
+      strikethrough = not strikethrough
+    of monoC:
+      monospace = not monospace
+    of colorC:
+      var temp: int
+      # We're at the \03 right now, inc to get further
+      inc i
+      # Try to parse the first foreground color
+      var checked = msg.parseInt(temp, i)
+      # If we only got \03 - reset colors
+      if checked == 0:
+        color = not color
+        # Reset colors
+        curBackground = -1
+        curForeground = -1
+        # We don't inc i here because we already did it before
+        continue
+      # Add foreground color
+      else:
+        i += checked
+        curForeground = temp
+      # Second color - if we have chars left, and we have a comma
+      if i < msg.len - 1 and msg[i] == ',':
+        # Next char should be a digit for colors
+        inc i
+        checked = msg.parseInt(temp, i)
+        # No second color, decrease and continue so we get the comma
+        if checked == 0:
+          dec i
+          continue
+        else:
+          # -1 because we already did inc i before
+          # otherwise we'll miss some characters
+          i += checked - 1
+          curBackground = temp
+      else:
+        dec i
+
+    else:
+      i += msg.parseUntil(curAtom.text, anyFormatting, i)
+      # Set captured parameters
+      curAtom.bold = bold
+      curAtom.italic = italic
+      curAtom.underline = underline
+      curAtom.strike = strikethrough
+      curAtom.mono = monospace
+      curAtom.color = color
+      curAtom.bg = curBackground
+      curAtom.fg = curForeground
+      data.add curAtom
+      # Reset
+      curAtom = FormatAtom()
+      continue
+    inc i
+
+  for x in data:
+    var temp: string
+    # Special-case for handling spaces, yeah...
+    var spaceBefore, spaceAfter: int
+    var toAdd = x.text
+    spaceBefore = toAdd.parseWhile(temp, {' '})
+    let skip = toAdd.parseUntil(temp, {' '}, spaceBefore)
+    spaceAfter = toAdd.parseWhile(temp, {' '}, skip + spaceBefore)
+    toAdd = toAdd.strip()
+    # from innermost to outermost formattting, 
+    # order: ~~ __ ** *
+    if x.italic:
+      toAdd.insert "*"
+      toAdd.add "*"
+    if x.underline:
+      toAdd.insert "__"
+      toAdd.add "__"
+    if x.bold:
+      toAdd.insert "**"
+      toAdd.add "**"
+    if x.strike:
+      toAdd.insert "~~"
+      toAdd.add "~~"
+    toAdd.insert ' '.repeat(spaceBefore)
+    toAdd.add ' '.repeat(spaceAfter)
+    #[
+    if x.fg != -1:
+      echo "x.fg = ", x.fg
+    if x.bg != -1:
+      echo "x.bg = ", x.bg
+    ]#
+    # For now we don't handle edge cases when there are consecutive entries
+    # with asterisks (e.g. -> bold text, then bold italics text).
+    # So we just insert a zero-width unicode space
+    result.add toAdd & zeroWidth
+
 proc getUsers*(s: DiscordClient, guild, part: string): Future[seq[User]] {.async.} = 
   ## Get all users whose usernames contain `part` string
   result = @[]
@@ -107,7 +241,22 @@ let objParser = peg("discord", d: seq[Data]):
 
   discord <- +@matchone
 
-when isMainModule:
+
+let mentParser = peg mentions:
+  nickChar <- Alnum | '_'
+  nick <- > +nickChar
+
+  mention <- >("@" * nick)
+
+  mentions <- *@mention
+
+iterator findMentions*(s: string): string =
+  ## Search for all mentions like @yardanico
+  ## in the string and yield all of them 
+  for x in mentParser.match(s).captures:
+    yield x
+
+when false:
   var res = ["""
   > 1234 <@!177365113899057151> askldpljsdgj39-2 u52308- tesdg <@!17736511389905127151><@!177365113812499057151>
   <@!177365113899057152>

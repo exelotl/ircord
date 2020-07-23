@@ -66,15 +66,11 @@ proc parseIrcMessage(nick, msg: var string): bool =
   msg = msg.multiReplace({
     "ACTION": "",
     "\n": "↵", "\r": "↵", "\l": "↵",
-    "\1": ""
+    "\1": "", 
   })
-  # This is good enough since we don't exactly need to 
-  # process 100k+ messages per second, although in the future
-  # it might be worth to create a hand-written version
-  # https://stackoverflow.com/a/10567935/5476128
-  const stripIrc = re"[\x02\x1F\x0F\x16\x1D]|\x03(\d\d?(,\d\d?)?)?"
-  msg = msg.replace(stripIrc, "")
-  
+
+  msg = msg.ircToMd()
+  echo repr msg
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
   # Special case for the Gitter <-> IRC bridge
@@ -177,6 +173,7 @@ proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
 
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   ## Handles all events received by the IRC client instance
+  # Enable color stripping
   if event.typ != EvMsg or event.params.len < 2:
     return
 
@@ -206,7 +203,8 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
       if nick == "disbot": break mentions
       var replaces: seq[(string, string)]
       # Match @word_stuff123
-      for mention in msg.findAndCaptureAll(re"(@[[:word:]]+)"):
+      
+      for mention in msg.findMentions():
         # While we still find @ in the string, also check for <@
         # Firstly check for last 5 people in Discord who sent the message
         var username = toLower(mention[1..^1])
@@ -314,7 +312,7 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
   ## Does all needed modifications on message conents before sending it
   var data = m.content
   # If this is not a command
-  if not (await handleDiscordCmds(m)): 
+  if not (await handleDiscordCmds(m)):
     data &= m.handleAttaches()
     data = handleObjects(discord, m, data)
     data = await m.handlePaste(data)
@@ -442,7 +440,7 @@ proc startDiscord() {.async.} =
   # !!! for intentGuildMembers we need to enable SERVER MEMBERS INTENT
   # in bot settings
   await discord.startSession(
-    gatewayIntents = {intentGuilds, intentGuildMembers, intentGuildMessages}
+    gatewayIntents = {giGuilds, giGuildMembers, giGuildMessages}
   )
 
 proc startIrc() {.async.} =
