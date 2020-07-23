@@ -17,6 +17,7 @@ const
   strikeC = '\x1E'
   monoC = '\x11'
   colorC = '\x03'
+  resetC = '\x0F'
   zeroWidth = "​"
   anyFormatting = {boldC, italicC, underlineC, strikeC, monoC, colorC}
 
@@ -24,7 +25,6 @@ proc ircToMd*(msg: string): string =
   ## A relatively simple IRC to Markdown parser/converter
   ## No complicated AST or anything like that, just plain simple loops
   ## and storing states of the formatting
-  echo repr msg
   result = newStringOfCap(msg.len)
   var
     bold, italic, underline, strikethrough, monospace, color = false
@@ -33,7 +33,7 @@ proc ircToMd*(msg: string): string =
   var i = 0
   var data: seq[FormatAtom]
   var curAtom = FormatAtom()
-  while i < msg.len - 1:
+  while i < msg.len:
     var c = msg[i]
     case c
     # Togglable formatting
@@ -43,10 +43,22 @@ proc ircToMd*(msg: string): string =
       italic = not italic
     of underlineC: 
       underline = not underline
+    # Strikethrough - not supported by most IRC clients
     of strikeC: 
       strikethrough = not strikethrough
+    # Monospace - not supported by most IRC clients
     of monoC:
       monospace = not monospace
+    # Reset all formatting
+    of resetC:
+      bold = false
+      italic = false
+      underline = false
+      strikethrough = false
+      monospace = false
+      color = false
+      curBackground = -1
+      curForeground = -1
     of colorC:
       var temp: int
       # We're at the \03 right now, inc to get further
@@ -134,6 +146,50 @@ proc ircToMd*(msg: string): string =
     # with asterisks (e.g. -> bold text, then bold italics text).
     # So we just insert a zero-width unicode space
     result.add toAdd & zeroWidth
+
+proc mdToIrc*(msg: string): string = 
+  result = newStringOfCap(msg.len)
+  var 
+    bold, italic, underline = false
+
+  var i = 0
+  while i < msg.len:
+    var c = msg[i]
+    case c
+    of '*':
+      var asteriskCount = 0
+      while c == '*' and i < msg.len:
+        c = msg[i]
+        if c == '*':
+          inc asteriskCount
+          inc i
+        else:
+          dec i # TODO: Maybe fix the loop so we don't need this?
+          break
+      if asteriskCount >= 3:
+        bold = not bold
+        italic = not italic
+        result.add boldC
+        result.add italicC
+        if asteriskCount > 3:
+          result.add '*'.repeat(asteriskCount - 3)
+      
+      elif asteriskCount == 2:
+        bold = not bold
+        result.add boldC
+      
+      elif asteriskCount == 1:
+        italic = not italic
+        result.add italicC
+    of '_':
+      if i + 1 < msg.len and msg[i + 1] == '_':
+        inc i
+        result.add underlineC
+      else:
+        result.add c
+    else:
+      result.add c
+    inc i
 
 proc getUsers*(s: DiscordClient, guild, part: string): Future[seq[User]] {.async.} = 
   ## Get all users whose usernames contain `part` string

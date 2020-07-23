@@ -70,7 +70,6 @@ proc parseIrcMessage(nick, msg: var string): bool =
   })
 
   msg = msg.ircToMd()
-  echo repr msg
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
   # Special case for the Gitter <-> IRC bridge
@@ -315,6 +314,7 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
   if not (await handleDiscordCmds(m)):
     data &= m.handleAttaches()
     data = handleObjects(discord, m, data)
+    data = data.mdToIrc()
     data = await m.handlePaste(data)
     # Add a note that we actually read that message
     #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
