@@ -21,6 +21,8 @@ const
   zeroWidth = "​"
   anyFormatting = {boldC, italicC, underlineC, strikeC, monoC, colorC}
 
+var badMsgs = open("failedMsgs", fmAppend)
+
 proc ircToMd*(msg: string): string = 
   ## A relatively simple IRC to Markdown parser/converter
   ## No complicated AST or anything like that, just plain simple loops
@@ -33,7 +35,13 @@ proc ircToMd*(msg: string): string =
   var i = 0
   var data: seq[FormatAtom]
   var curAtom = FormatAtom()
+  var safeCnt = 0 # just a safe guard, I'm not sure if this code is 100% correct
   while i < msg.len:
+    inc safeCnt
+    if safeCnt > 5000:
+      echo repr msg
+      badMsgs.writeLine(repr msg)
+      return msg
     var c = msg[i]
     case c
     # Togglable formatting
@@ -153,7 +161,13 @@ proc mdToIrc*(msg: string): string =
     bold, italic, underline = false
 
   var i = 0
+  var safeCnt = 0
   while i < msg.len:
+    inc safeCnt
+    if safeCnt > 5000:
+      echo repr msg
+      badMsgs.writeLine(repr msg)
+      return msg
     var c = msg[i]
     case c
     of '*':
@@ -212,50 +226,6 @@ type
     kind: Kind
     r: tuple[old, id: string]
 
-proc handleObjects*(s: DiscordClient, msg: Message, content: string): string = 
-  result = content
-
-
-  # A simple NPEG parser, done with the help of leorize from IRC
-  let objParser = peg("discord", d: seq[Data]):
-    # Emotes like <:nim1:321515212521> <a:monakSHAKE:472058550164914187>
-    emote <- "<" * ?"a" * >(":" * +Alnum * ":") * +Digit * ">":
-      d.add Data(kind: Emote, r: (old: $0, id: $1))
-
-    # User mentions like <@!2315125125> <@408815590170689546>
-    mention <- "<@" * ?"!" * >(+Digit) * ">":
-      # logic for handling mentions
-      d.add Data(kind: Mention, r: (old: $0, id: $1))
-
-    # Channel mentions like <#125125125215>
-    channel <- "<#" * >(+Digit) * ">":
-      # logic for handling channels
-      d.add Data(kind: Channel, r: (old: $0, id: $1))
-
-    matchone <- channel | emote | mention
-
-    discord <- +@matchone
-  
-  var data = newSeq[Data]()
-  let match = objParser.match(result, data)
-  if not match.ok: 
-    return
-  for obj in data:
-    case obj.kind
-    of Emote: result = result.replace(obj.r.old, obj.r.id)
-    of Mention:
-      # Iterate over all mentioned users and find the one we need
-      for user in msg.mention_users:
-        if user.id == obj.r.id:
-          result = result.replace(obj.r.old, "@" & $user.username)
-    of Channel:
-      let chan = s.shards[0].cache.guilds.getOrDefault(obj.r.id)
-      if not chan.isNil():
-        result = result.replace(obj.r.old, "#" & chan.name)
-    of Replace:
-      result = result.replace(obj.r.old, obj.r.id)
-
-
 # A simple NPEG parser, done with the help of leorize from IRC
 let objParser = peg("discord", d: seq[Data]):
   # Emotes like <:nim1:321515212521> <a:monakSHAKE:472058550164914187>
@@ -278,15 +248,15 @@ let objParser = peg("discord", d: seq[Data]):
   # which is the one we actually need
   # We also handle cases when a user is both in Discord and IRC,
   # and someone replied to him from Discord to IRC and Discord replaced
-  # the username with the Discord ID 
+  # the username with the Discord ID (that's why we have ircPostfix here)
   discordReply <- "> " * +(*(1 - "<@") * "<@" * ?"!" * >(+Digit) * ">") * ?ircPostfix:
-    d.add Data(kind: Mention, r: (old: $0, id: capture[^1].s))
+    d.add Data(kind: Mention, r: (old: $0, id: (capture[capture.len - 1]).s))
 
   # For handling Discord -> IRC replies
   # Almost same as discordReply, but we don't capture that Discord ID but instead
   # wait for the last @(name)[IRC]#0000 and ircPostfix is mandatory
   ircReply <- ?"> " * +(*(1 - "@") * "@" * >+(1 - "[") * ircPostfix):
-    d.add Data(kind: Replace, r: (old: $0, id: "@" & capture[^1].s))
+    d.add Data(kind: Replace, r: (old: $0, id: "@" & capture[capture.len - 1].s))
 
   # Channel mentions like <#125125125215>
   channel <- "<#" * >(+Digit) * ">":
@@ -297,6 +267,27 @@ let objParser = peg("discord", d: seq[Data]):
 
   discord <- +@matchone
 
+proc handleObjects*(s: DiscordClient, msg: Message, content: string): string = 
+  result = content
+
+  var data = newSeq[Data]()
+  let match = objParser.match(result, data)
+  if not match.ok: 
+    return
+  for obj in data:
+    case obj.kind
+    of Emote: result = result.replace(obj.r.old, obj.r.id)
+    of Mention:
+      # Iterate over all mentioned users and find the one we need
+      for user in msg.mention_users:
+        if user.id == obj.r.id:
+          result = result.replace(obj.r.old, "@" & $user.username)
+    of Channel:
+      let chan = s.shards[0].cache.guildChannels.getOrDefault(obj.r.id)
+      if not chan.isNil():
+        result = result.replace(obj.r.old, "#" & chan.name)
+    of Replace:
+      result = result.replace(obj.r.old, obj.r.id)
 
 let mentParser = peg mentions:
   nickChar <- Alnum | '_'
@@ -335,4 +326,5 @@ when false:
   for test in res:
     var data: seq[Data]
     let match = objParser.match(test, data)
+    echo data
     doAssert match.ok, "assert failed for " & test

@@ -360,22 +360,26 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
       # thanks leorize on IRC for suggesting this edit format
       case span.tag
       of tagReplace:
-        newmsg.add "'$1' => '$2'".format(span.a.join(" "), span.b.join(" "))
+        newmsg.add "\"$1\" => \"$2\"".format(span.a.join(" "), span.b.join(" "))
       # We only send diff so we don't care if spans are equal
       of tagEqual:
         discard
       of tagDelete:
-        newmsg.add "removed '$1'".format(span.a.join(" "))
+        newmsg.add "\x0304removed\x03 \"$1\"".format(span.a.join(" "))
       of tagInsert:
         echo span.a
         echo span.b
         echo slices
         if i != 0:
           # stuff ...  -> stuff new ...
-          newmsg.add "'"
+          newmsg.add '"'
           # at max 2 words for context from the left
-          let start = max(i - 2, 0)
+          var contextLeftCnt = 0
+          let start = min(max(i - 2, 0), 2)
           for slice in slices[start .. i - 1]:
+            if contextLeftCnt > 2:
+              break
+            let lastSlice = slice.b[min(slice.b.len - 1, 3)]
             newmsg.add slice.b.join(" ")
           newmsg.add " ... "
           if i < slices.len - 1:
@@ -389,11 +393,12 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
                 if part != " ":
                   newmsg.add part
                   break
-          newmsg.add "' => '"
-          for slice in slices[start .. i - 1]:
-            newmsg.add slice.b.join(" ")
+          newmsg.add "\" \x0303added\x03 \""
+          #for slice in slices[start .. i - 1]:
+          #  newmsg.add slice.b.join(" ")
+          #newmsg.add " "
           newmsg.add span.b.join(" ")
-          newmsg.add "'"
+          newmsg.add '"'
         else:
           newmsg.add ""
 
@@ -402,7 +407,7 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
     msg = newmsgs.join(" | ")
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x0F (edit) {msg}"
+  let toSend = &"\x02<{m.author.username}>\x02 (edit) {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 var cached = false
@@ -459,9 +464,6 @@ proc startIrc() {.async.} =
     callback = handleIrc
   )
   await ircClient.connect()
-  # XXX: Is this the correct place?
-  #for chan in ircChans:
-  #  await ircClient.send(fmt"/mode {chan} +c")
   asyncCheck ircClient.run()
 
 proc main() {.async.} =
