@@ -293,13 +293,18 @@ let mentParser = peg mentions:
   nickChar <- Alnum | '_'
   nick <- > +nickChar
 
-  mention <- >("@" * nick)
+  mention <- "@" * nick
 
   mentions <- *@mention
 
+  # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
+  seperator <- +(' ' | ',')
+  leadingMentions <- +((mention | nick) * seperator) * ':'
+
 iterator findMentions*(s: string): string =
   ## Search for all mentions like @yardanico
-  ## in the string and yield all of them 
+  ## in the string and yield all of them with
+  ## the '@' stripped
   for x in mentParser.match(s).captures:
     yield x
 
