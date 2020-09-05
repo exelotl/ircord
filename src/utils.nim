@@ -293,9 +293,9 @@ let mentParser = peg mentions:
   nickChar <- Alnum | '_'
   nick <- > +nickChar
 
-  mention <- "@" * nick
+  mention <- ('@' * nick) | ("ping" * ?'@' * nick)
 
-  mentions <- *@mention
+  mentions <- ?leadingMentions * *@mention
 
   # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
   seperator <- +(' ' | ',')
