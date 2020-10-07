@@ -293,13 +293,16 @@ let mentParser = peg mentions:
   nickChar <- Alnum | '_'
   nick <- > +nickChar
 
-  mention <- ('@' * nick) | ("ping" * +(seperator * ?'@' * nick))
+  # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
+  separator <- +(' ' | ',')
+
+  mention <- ('@' * nick) | ("ping" * +(separator * ?'@' * nick))
+
+  # Separator is optional for when we only have 1 mention
+  # So both "dom96 mratsim: hi" and "dom96: hi" are supported
+  leadingMentions <- +((mention | nick) * ?separator) * ':'
 
   mentions <- ?leadingMentions * *@mention
-
-  # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
-  seperator <- +(' ' | ',')
-  leadingMentions <- +((mention | nick) * seperator) * ':'
 
 iterator findMentions*(s: string): string =
   ## Search for all mentions like @yardanico

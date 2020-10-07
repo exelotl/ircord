@@ -417,7 +417,7 @@ var cached = false
 proc messageCreate(s: Shard, m: Message) {.async.} =
   ## Called when a new message is posted in Discord
   if not cached:
-    await s.requestGuildMembers(@[conf.discord.guild], limit = 0)
+    await s.requestGuildMembers(@[conf.discord.guild], limit = none(int))
     cached = true
   let check = checkMessage(m)
   if not check.isSome(): return
@@ -447,6 +447,7 @@ proc startDiscord() {.async.} =
   # !!! for intentGuildMembers we need to enable SERVER MEMBERS INTENT
   # in bot settings
   await discord.startSession(
+    # XXX: giGuildEmojis shouldn't be needed
     gatewayIntents = {giGuilds, giGuildMembers, giGuildMessages}
   )
 
