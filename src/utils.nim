@@ -291,7 +291,7 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
 
 let mentParser = peg mentions:
   nickChar <- Alnum | '_'
-  nick <- > +nickChar
+  >nick <- +nickChar
 
   # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
   separator <- +(' ' | ',')
@@ -300,7 +300,9 @@ let mentParser = peg mentions:
 
   # Separator is optional for when we only have 1 mention
   # So both "dom96 mratsim: hi" and "dom96: hi" are supported
-  leadingMentions <- +((mention | nick) * ?separator) * ':'
+  # Support also yardanico ping, but don't consume the ping,
+  # because it might be a prefix ping
+  leadingMentions <- *((mention | nick) * separator) * (mention | nick) * (?seperator * ':' | seperator * &"ping")
 
   mentions <- ?leadingMentions * *@mention
 
