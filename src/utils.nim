@@ -302,7 +302,7 @@ let mentParser = peg mentions:
   # So both "dom96 mratsim: hi" and "dom96: hi" are supported
   # Support also yardanico ping, but don't consume the ping,
   # because it might be a prefix ping
-  leadingMentions <- *((mention | nick) * separator) * (mention | nick) * (?seperator * ':' | seperator * &"ping")
+  leadingMentions <- *((mention | nick) * separator) * (mention | nick) * (?separator * ':' | separator * &"ping")
 
   mentions <- ?leadingMentions * *@mention
 
