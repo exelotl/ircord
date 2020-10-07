@@ -206,16 +206,18 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
       for mention in msg.findMentions():
         # While we still find @ in the string, also check for <@
         # Firstly check for last 5 people in Discord who sent the message
-        var username = toLower(mention[1..^1])
+        var username = toLower(mention)
         for user in lastUsers:
           # maybe we just started and not all entries are populated
           if user.isNil(): continue
           if username in toLower(user.username):
             replaces.add (mention, "<@" & user.id & ">")
+            replaces.add ('@' & mention, "<@" & user.id & ">")
         # Search through all members on the channel (cached locally so it's fine)
         for id, user in discord.shards[0].cache.users:
           if toLower(user.username).startsWith(username):
             replaces.add (mention, "<@" & id & ">")
+            replaces.add ('@' & mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
     asyncCheck sendWebhook(
       ircChan, nick, msg
