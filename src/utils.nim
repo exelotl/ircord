@@ -119,41 +119,42 @@ proc ircToMd*(msg: string): string =
       continue
     inc i
 
-  for x in data:
+  proc parseAtoms(prev, x: FormatAtom): string = 
+    echo prev, " ", x
     var temp: string
     # Special-case for handling spaces, yeah...
     var spaceBefore, spaceAfter: int
-    var toAdd = x.text
-    spaceBefore = toAdd.parseWhile(temp, {' '})
-    let skip = toAdd.parseUntil(temp, {' '}, spaceBefore)
-    spaceAfter = toAdd.parseWhile(temp, {' '}, skip + spaceBefore)
-    toAdd = toAdd.strip()
-    # from innermost to outermost formattting, 
-    # order: ~~ __ ** *
-    if x.italic:
-      toAdd.insert "*"
-      toAdd.add "*"
-    if x.underline:
-      toAdd.insert "__"
-      toAdd.add "__"
-    if x.bold:
-      toAdd.insert "**"
-      toAdd.add "**"
-    if x.strike:
-      toAdd.insert "~~"
-      toAdd.add "~~"
-    toAdd.insert ' '.repeat(spaceBefore)
-    toAdd.add ' '.repeat(spaceAfter)
-    #[
-    if x.fg != -1:
-      echo "x.fg = ", x.fg
-    if x.bg != -1:
-      echo "x.bg = ", x.bg
-    ]#
-    # For now we don't handle edge cases when there are consecutive entries
-    # with asterisks (e.g. -> bold text, then bold italics text).
-    # So we just insert a zero-width unicode space
-    result.add toAdd & zeroWidth
+    result = x.text # <- use the current node here, so in the start x = first real node,
+    # in the end <- x = last fake empty node
+    spaceBefore = result.parseWhile(temp, {' '})
+    let skip = result.parseUntil(temp, {' '}, spaceBefore)
+    spaceAfter = result.parseWhile(temp, {' '}, skip + spaceBefore)
+    result = result.strip()
+    
+    # If formatting of the previous and current atoms don't match, insert
+    # the formatting character 
+    if x.italic != prev.italic:
+      result.insert "*"
+    
+    if x.underline != prev.underline:
+      result.insert "__"
+    
+    if x.bold != prev.bold:
+      result.insert "**"
+    
+    if x.strike != prev.strike:
+      result.insert "~~"
+    
+    result.insert ' '.repeat(spaceBefore)
+    result.add ' '.repeat(spaceAfter)
+
+  var prev = FormatAtom()
+  for i, x in data:
+    result.add parseAtoms(prev, x)
+    prev = x
+  # last iteration for the closing tags in the end
+  result.add parseAtoms(prev, FormatAtom())
+  echo repr result
 
 proc mdToIrc*(msg: string): string = 
   result = newStringOfCap(msg.len)
