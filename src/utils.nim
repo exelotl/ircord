@@ -156,6 +156,12 @@ proc ircToMd*(msg: string): string =
   result.add parseAtoms(prev, FormatAtom())
   echo repr result
 
+let boldStr = boldC & "boldness" & boldC
+let italicStr = italicC & "italics" & italicC
+let boldItalicStr = boldC & italicC & "bold italics" & italicC & boldC
+let full = italicStr & boldStr & boldItalicStr & boldStr & italicStr & "hello"
+echo ircToMd(full)
+
 proc mdToIrc*(msg: string): string = 
   result = newStringOfCap(msg.len)
   var 
