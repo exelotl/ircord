@@ -417,7 +417,9 @@ var cached = false
 proc messageCreate(s: Shard, m: Message) {.async.} =
   ## Called when a new message is posted in Discord
   if not cached:
-    await s.requestGuildMembers(@[conf.discord.guild], limit = none(int))
+    await s.requestGuildMembers(
+      @[conf.discord.guild], limit = some(0), query = some("")
+    )
     cached = true
   let check = checkMessage(m)
   if not check.isSome(): return
