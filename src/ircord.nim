@@ -199,24 +199,15 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
 
   if parseIrcMessage(nick, msg):
     block mentions:
-      # Sorry disbot, but you _can't_ mention people :(
-      if nick == "disbot": break mentions
-      var replaces: seq[(string, string)]
-      # Match @word_stuff123
-      
+      # Blacklist for mentions 
+      # TODO XXX Add to config
+      if nick in ["disbot", "ForumUpdaterBot"]: break mentions
+      var replaces: seq[(string, string)]      
       for mention in msg.findMentions():
-        # While we still find @ in the string, also check for <@
-        # Firstly check for last 5 people in Discord who sent the message
         var username = toLower(mention)
-        for user in lastUsers:
-          # maybe we just started and not all entries are populated
-          if user.isNil(): continue
-          if username in toLower(user.username):
-            replaces.add (mention, "<@" & user.id & ">")
-            replaces.add ('@' & mention, "<@" & user.id & ">")
         # Search through all members on the channel (cached locally so it's fine)
         for id, user in discord.shards[0].cache.users:
-          if toLower(user.username).startsWith(username):
+          if toLower(user.username) == username:
             replaces.add (mention, "<@" & id & ">")
             replaces.add ('@' & mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
@@ -263,46 +254,44 @@ proc handleAttaches(m: Message): string =
   if m.attachments.len > 0:
     result = " " & m.attachments.mapIt(it.proxy_url).join(" ")
 
-proc preprocessPasteMsg(msg: var string): bool = 
+proc preprocessPasteMsg(msg: var string, isCodePaste = false) = 
   ## Preprocesses the message before pasting it:
   ## - Word-wraps all lines by 80 characters
   ## - In code pastes text is converted into comments
-  ##
-  ## Returns whether the message is a code paste
   var lines = msg.splitLines()
   
-  # Ugly but works
-  if not lines[0].startsWith("```"):
-    lines[0] = "#[\n" & lines[0]
+  msg.setLen(0)
   
   var isText = true
-  for line in mitems(lines):
-    # If we see a code-formatting toggle, check if we're in text
-    # if so - close the comment, otherwise open it
+  for line in lines:
+    # If the line starts with ``` - toggle the text status
+    # and skip the line itself
     if line.startsWith("```"):
-      result = true
       isText = not isText
-      line = 
-        if isText: "#[\n"
-        else: "\n]#"
-    # We also do fancy word-wrapping thanks to Nim stdlib
-    if isText:
-      line = wrapWords(line)
-  
-  # The whole message was text, remove the comment start :(
-  if not result:
-    lines[0] = lines[0][3 .. ^1]
+      # Just so that we don't have empty lines in place of ```
+      continue
 
-  msg = lines.join("\n")
+    # Word-wrap the line and if we're inside a code paste, also
+    # transform normal text into comments
+    if isCodePaste and isText and line != "":
+      msg.add "# "
+      msg.add wrapWords(line, newLine="\n# ")
+    else:
+      msg.add wrapWords(line)
+    msg.add "\n"
 
 proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
   ## Handles pastes or big messages
-  # Some very smart (TM) checks for long messages or code pastes
-  if not (msg.count('\n') > 3 or msg.len > 500):
-    # Replace newlines with ↵ anyway
+  # We treat _all_ messages that contain ``` as code pastes
+  # Otherwise a message is a normal paste if it's more than 3 lines
+  # long or more than 500 characters long - that's very near to 
+  # the 512 IRC char limit
+  let maybeCodePaste = "```" in msg
+  if not (maybeCodePaste or msg.count('\n') > 3 or msg.len > 500):
+    # Replace newlines with ↵
     result = msg.replace("\n", "↵")
   else:
-    let maybeCodePaste = preprocessPasteMsg(msg)
+    preprocessPasteMsg(msg, maybeCodePaste)
 
     var link: string
 
@@ -344,7 +333,7 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   ]#
 
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
-  ## Does all needed modifications on message conents before sending it
+  ## Does all needed modifications on message contents before sending it
   var data = m.content
   # If this is not a command
   if not (await handleDiscordCmds(m)):

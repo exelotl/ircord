@@ -1,4 +1,4 @@
-version       = "0.4.1"
+version       = "0.5.0"
 author        = "Danil Yarantsev (Yardanico)"
 description   = "Discord-IRC bridge with support for Discord webhooks and more!"
 license       = "MIT"
