@@ -19,7 +19,7 @@ const
   colorC = '\x03'
   resetC = '\x0F'
   zeroWidth = "​"
-  anyFormatting = {boldC, italicC, underlineC, strikeC, monoC, colorC}
+  anyFormatting = {boldC, italicC, underlineC, strikeC, monoC, colorC, resetC}
 
 var badMsgs = open("failedMsgs", fmAppend)
 
@@ -130,9 +130,14 @@ proc ircToMd*(msg: string): string =
     let skip = result.parseUntil(temp, {' '}, spaceBefore)
     spaceAfter = result.parseWhile(temp, {' '}, skip + spaceBefore)
     result = result.strip()
-    
+
+    result.insert ' '.repeat(spaceBefore)
+    result.add ' '.repeat(spaceAfter)
+
     # If formatting of the previous and current atoms don't match, insert
-    # the formatting character 
+    # the formatting character
+    # This needs to be after space insertion so formatting looks like **text**
+    # and not **text **
     if x.italic != prev.italic:
       result.insert "*"
     
@@ -144,9 +149,6 @@ proc ircToMd*(msg: string): string =
     
     if x.strike != prev.strike:
       result.insert "~~"
-    
-    result.insert ' '.repeat(spaceBefore)
-    result.add ' '.repeat(spaceAfter)
 
   var prev = FormatAtom()
   for i, x in data:
@@ -154,7 +156,6 @@ proc ircToMd*(msg: string): string =
     prev = x
   # last iteration for the closing tags in the end
   result.add parseAtoms(prev, FormatAtom())
-  #echo repr result
 
 
 proc mdToIrc*(msg: string): string = 

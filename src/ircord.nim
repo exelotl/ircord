@@ -70,21 +70,25 @@ proc parseIrcMessage(nick, msg: var string): bool =
     "\1": "", 
   })
 
+  # Convert IRC formatting to Markdown
+  msg = msg.ircToMd()
 
+  var newNick, newMsg: string
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
   # Special case for the Gitter <-> IRC bridge
   elif nick == "FromGitter":
-    # Parse FromGitter message
-    if scanf(msg, "<$+> $+", nick, msg):
-      nick &= "[Gitter]"
-      echo "ok"
+    # Parse FromGitter message - ** is boldness (irc -> markdown)
+    if scanf(msg, "**<$+>** $+", newNick, newMsg):
+      nick = newNick & "[Gitter]"
+      msg = newMsg
     # Shouldn't happen anyway
     else: result = false
     # Special case for Gitter <-> Matrix bridge (very rare)
     if "matrixbot" in msg:
-      if scanf(msg, "<matrixbot> `$+` $+", nick, msg):
-        nick &= "[Matrix]"
+      if scanf(msg, "<matrixbot> `$+` $+", newNick, newMsg):
+        nick = newNick & "[Matrix]"
+        msg = newMsg
       # Shouldn't happen either
       else: result = false
   # Freenode <-> Matrix bridge
@@ -212,8 +216,6 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
             replaces.add ('@' & mention, "<@" & id & ">")
             replaces.add (mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
-    # Convert IRC formatting to Markdown
-    msg = msg.ircToMd()
     asyncCheck sendWebhook(
       ircChan, nick, msg
     )
