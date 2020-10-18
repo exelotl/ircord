@@ -120,7 +120,7 @@ proc ircToMd*(msg: string): string =
     inc i
 
   proc parseAtoms(prev, x: FormatAtom): string = 
-    echo prev, " ", x
+    #echo prev, " ", x
     var temp: string
     # Special-case for handling spaces, yeah...
     var spaceBefore, spaceAfter: int
@@ -154,7 +154,7 @@ proc ircToMd*(msg: string): string =
     prev = x
   # last iteration for the closing tags in the end
   result.add parseAtoms(prev, FormatAtom())
-  echo repr result
+  #echo repr result
 
 
 proc mdToIrc*(msg: string): string = 
