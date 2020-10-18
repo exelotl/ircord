@@ -313,9 +313,7 @@ iterator findMentions*(s: string): string =
   ## Simple iterator for yielding all words
   ## which are entirely made of IdentChars
   for word in s.split(Whitespace + {':', '@', ','}):
-    # 4 chars min
-    if word.len > 3: 
-      yield word
+    yield word
 
 when false:
   let boldStr = boldC & "boldness" & boldC

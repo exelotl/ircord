@@ -215,7 +215,9 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
       for id, user in discord.shards[0].cache.users:
         if toLower(user.username) == username:
           replaces.add ('@' & mention, "<@" & id & ">")
-          replaces.add (mention, "<@" & id & ">")
+          if mention.len > 3:
+            # Support mentioning without @ but not for short usernames
+            replaces.add (mention, "<@" & id & ">")
     msg = msg.multiReplace(replaces)
   asyncCheck sendWebhook(
     ircChan, nick, msg
