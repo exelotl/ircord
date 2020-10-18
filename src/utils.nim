@@ -303,19 +303,24 @@ let mentParser = peg mentions:
   # So both "dom96 mratsim: hi" and "dom96: hi" are supported
   # Support also yardanico ping, but don't consume the ping,
   # because it might be a prefix ping
-  suffixPing = sep * &"ping"
+  suffixPing <- sep * &"ping"
   leadingMentions <- (mention | nick) * *((sep * (mention | nick)) - suffixPing) * (?sep * ':' | suffixPing)
 
   mentions <- ?leadingMentions * *@mention
 
 iterator findMentions*(s: string): string =
-  ## Search for all mentions like @yardanico
-  ## in the string and yield all of them with
-  ## the '@' stripped
-  for x in s.split(AllChars - IdentChars):
-    yield x
+  ## Simple iterator for yielding all words
+  ## which are entirely made of IdentChars
+  var i = 0
+  while i < s.len:
+    var nick: string
+    let res = parseWhile(s, nick, IdentChars, i)
+    if res > 0:
+      i += res
+      yield nick
+    inc i
 
-when isMainModule:
+when false:
   let boldStr = boldC & "boldness" & boldC
   let italicStr = italicC & "italics" & italicC
   let boldItalicStr = boldC & italicC & "bold italics" & italicC & boldC

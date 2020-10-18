@@ -208,8 +208,8 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
         # Search through all members on the channel (cached locally so it's fine)
         for id, user in discord.shards[0].cache.users:
           if toLower(user.username) == username:
-            replaces.add (mention, "<@" & id & ">")
             replaces.add ('@' & mention, "<@" & id & ">")
+            replaces.add (mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
     asyncCheck sendWebhook(
       ircChan, nick, msg
