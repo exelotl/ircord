@@ -312,7 +312,7 @@ iterator findMentions*(s: string): string =
   ## Search for all mentions like @yardanico
   ## in the string and yield all of them with
   ## the '@' stripped
-  for x in s.split(' '):
+  for x in s.split(AllChars - IdentChars):
     yield x
 
 when isMainModule:
