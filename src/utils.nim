@@ -312,7 +312,7 @@ let mentParser = peg mentions:
 iterator findMentions*(s: string): string =
   ## Simple iterator for yielding all words
   ## which are entirely made of IdentChars
-  for word in s.split(Whitespace + {':', '@'}):
+  for word in s.split(Whitespace + {':', '@', ','}):
     yield word
 
 when false:
