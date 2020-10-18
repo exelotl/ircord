@@ -312,9 +312,27 @@ iterator findMentions*(s: string): string =
   ## Simple iterator for yielding all words
   ## which are entirely made of IdentChars
   var i = 0
+  var nick: string
+
   while i < s.len:
-    var nick: string
-    let res = parseWhile(s, nick, IdentChars, i)
+    var res: int
+    # normal ping like @yardanico
+    if s[i] == '@':
+      res = parseWhile(s, nick, IdentChars, i + 1)
+    # ping like "ping yardanico" or "ping @yardanico"
+    elif i + 5 < s.len and s[i .. i + 3] == "ping":
+      # skip 'ping'
+      i += 4
+      # @ is optional here
+      let temp = parseWhile(s, nick, Whitespace + {'@'}, i)
+      if temp > 0:
+        i += temp
+        res = parseWhile(s, nick, IdentChars, i)
+    else:
+      # Yardanico: hello at the start of the msg
+      if i == 0:
+        res = parseUntil(s, nick, ':', i)
+    # if we found a nick
     if res > 0:
       i += res
       yield nick

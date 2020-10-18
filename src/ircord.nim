@@ -70,7 +70,7 @@ proc parseIrcMessage(nick, msg: var string): bool =
     "\1": "", 
   })
 
-  msg = msg.ircToMd()
+
   # Just in a rare case we accidentally start this bot in #nim
   if nick == "FromDiscord": result = false
   # Special case for the Gitter <-> IRC bridge
@@ -78,6 +78,7 @@ proc parseIrcMessage(nick, msg: var string): bool =
     # Parse FromGitter message
     if scanf(msg, "<$+> $+", nick, msg):
       nick &= "[Gitter]"
+      echo "ok"
     # Shouldn't happen anyway
     else: result = false
     # Special case for Gitter <-> Matrix bridge (very rare)
@@ -211,6 +212,8 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
             replaces.add ('@' & mention, "<@" & id & ">")
             replaces.add (mention, "<@" & id & ">")
       msg = msg.multiReplace(replaces)
+    # Convert IRC formatting to Markdown
+    msg = msg.ircToMd()
     asyncCheck sendWebhook(
       ircChan, nick, msg
     )
