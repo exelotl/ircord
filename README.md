@@ -29,3 +29,11 @@ The bot is asynchronous and should be fully cross-platform (there's no OS-specif
 To configure the bot, copy the config file from ircord_default.toml to ircord.toml and edit to your liking.
 You'll need a Discord bot token (it's used in Ircord for mentioning users in Discord from IRC), and
 a mapping with IRC channel name, Discord channel ID and a webhook URL for that channel.
+
+Some of the features:
+
+- Pinging people in Discord from IRC
+
+- Converting IRC formatting to Discord's markdown and vice-versa
+
+- Word-wrapping big messages or code pastes and sending them with ix.io / paste.rs

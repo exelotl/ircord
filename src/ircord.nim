@@ -2,7 +2,8 @@
 import std / [
   strformat, strutils, sequtils, json, strscans, parseutils,
   httpclient, uri, asyncdispatch, tables, options,
-  math, md5, times, segfaults
+  math, md5, times, segfaults,
+  wordwrap
 ]
 # Nimble
 import dimscord, irc, diff
@@ -258,41 +259,74 @@ proc checkMessage(m: Message): Option[string] =
   if ircChan == "": return
   result = some(ircChan)
 
-proc handleAttaches*(m: Message): string =
+proc handleAttaches(m: Message): string =
   if m.attachments.len > 0:
     result = " " & m.attachments.mapIt(it.proxy_url).join(" ")
 
-proc handlePaste*(m: Message, msg: string): Future[string] {.async.} =
+proc preprocessPasteMsg(msg: var string): bool = 
+  ## Preprocesses the message before pasting it:
+  ## - Word-wraps all lines by 80 characters
+  ## - In code pastes text is converted into comments
+  ##
+  ## Returns whether the message is a code paste
+  var lines = msg.splitLines()
+  
+  # Ugly but works
+  if not lines[0].startsWith("```"):
+    lines[0] = "#[\n" & lines[0]
+  
+  var isText = true
+  for line in mitems(lines):
+    # If we see a code-formatting toggle, check if we're in text
+    # if so - close the comment, otherwise open it
+    if line.startsWith("```"):
+      result = true
+      isText = not isText
+      line = 
+        if isText: "#[\n"
+        else: "\n]#"
+    # We also do fancy word-wrapping thanks to Nim stdlib
+    if isText:
+      line = wrapWords(line)
+  
+  # The whole message was text, remove the comment start :(
+  if not result:
+    lines[0] = lines[0][3 .. ^1]
+
+  msg = lines.join("\n")
+
+proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
   ## Handles pastes or big messages
   # Some very smart (TM) checks for long messages or code pastes
-  result = if not (msg.count('\n') > 3 or msg.len > 500):
+  if not (msg.count('\n') > 3 or msg.len > 500):
     # Replace newlines with ↵ anyway
-    msg.replace("\n", "↵")
+    result = msg.replace("\n", "↵")
   else:
-    # Not the best way, but it works for most cases
-    let maybeCodePaste = "```" in msg
-    let paste = await createPaste(msg)
-    # If we successfully pasted on ix.io
-    let link = if paste.isSome():
-      let pasteLink = paste.get()
-      if maybeCodePaste:
-        let ixid = pasteLink.rsplit("/")[^1]
-        &"https://play.nim-lang.org/#ix={ixid}"
+    let maybeCodePaste = preprocessPasteMsg(msg)
+
+    var link: string
+
+    block tryPasting:
+      for service in [IxIo, PasteRs]:
+        let maybePaste = await createPaste(msg, service)
+        if maybePaste.isSome():
+          link = maybePaste.get()
+          # Convert the ix.io link into a nim playground one
+          if maybeCodePaste and service == IxIo:
+            let ixid = link.rsplit("/")[^1]
+            link = "https://play.nim-lang.org/#ix=" & ixid
+          
+          break tryPasting
+      
+      if not m.guildId.isSome(): return # just to be safe I guess
+      link = &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
+    
+    # In italics
+    result = 
+      if maybeCodePaste: 
+        &"\x1Dsent a code paste, see\x1D {link}"
       else:
-        pasteLink
-    else:
-      let secondPasta = await createPaste(msg, PasteRs)
-      if secondPasta.isSome():
-        secondPasta.get()
-      else:
-        # just to be safe I guess
-        if not m.guildId.isSome(): return
-        &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
-    if maybeCodePaste: 
-      # In italics
-      &"\x1Dsent a code paste, see\x1D {link}"
-    else:
-      &"\x1Dsent a long message, see\x1D {link}"
+        &"\x1Dsent a long message, see\x1D {link}"
 
 proc handleDiscordCmds(m: Message): Future[bool] {.async.} = 
   result = false
