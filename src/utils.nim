@@ -292,19 +292,19 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
       result = result.replace(obj.r.old, obj.r.id)
 
 let mentParser = peg mentions:
-  nickChar <- Alnum | '_'
-  >nick <- +nickChar
+  >nick <- +(Alnum | '_')
 
   # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
-  separator <- +(' ' | ',')
+  sep <- +(' ' | ',')
 
-  mention <- ('@' * nick) | ("ping" * +(separator * ?'@' * nick))
+  mention <- ('@' * nick) | ("ping" * +(sep * ?'@' * nick))
 
   # Separator is optional for when we only have 1 mention
   # So both "dom96 mratsim: hi" and "dom96: hi" are supported
   # Support also yardanico ping, but don't consume the ping,
   # because it might be a prefix ping
-  leadingMentions <- *((mention | nick) * separator) * (mention | nick) * (?separator * ':' | separator * &"ping")
+  suffixPing = sep * &"ping"
+  leadingMentions <- (mention | nick) * *((sep * (mention | nick)) - suffixPing) * (?sep * ':' | suffixPing)
 
   mentions <- ?leadingMentions * *@mention
 
@@ -312,7 +312,7 @@ iterator findMentions*(s: string): string =
   ## Search for all mentions like @yardanico
   ## in the string and yield all of them with
   ## the '@' stripped
-  for x in mentParser.match(s).captures:
+  for x in s.split(' '):
     yield x
 
 when isMainModule:
