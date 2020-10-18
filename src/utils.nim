@@ -320,6 +320,7 @@ iterator findMentions*(s: string): string =
     # normal ping like @yardanico
     if s[i] == '@':
       res = parseWhile(s, nick, IdentChars, i + 1)
+      if res > 0: inc i
     # ping like "ping yardanico" or "ping @yardanico"
     elif i + 5 < s.len and s[i .. i + 3] == "ping":
       # skip 'ping'
@@ -332,12 +333,13 @@ iterator findMentions*(s: string): string =
     else:
       # Yardanico: hello at the start of the msg
       if i == 0:
-        res = parseUntil(s, nick, ':', i)
+        res = parseUntil(s, nick, Whitespace + {':'}, i)
     # if we found a nick
     if res > 0:
       i += res
       yield nick
     inc i
+
 
 when false:
   let boldStr = boldC & "boldness" & boldC

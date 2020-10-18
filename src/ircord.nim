@@ -201,24 +201,25 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
 
   # Don't send commands or their output to Discord
   if (await handleIrcCmds(ircChan, nick, msg)): return
+  if not parseIrcMessage(nick, msg): return
 
-  if parseIrcMessage(nick, msg):
-    block mentions:
-      # Blacklist for mentions 
-      # TODO XXX Add to config
-      if nick in ["disbot", "ForumUpdaterBot"]: break mentions
-      var replaces: seq[(string, string)]      
-      for mention in msg.findMentions():
-        var username = toLower(mention)
-        # Search through all members on the channel (cached locally so it's fine)
-        for id, user in discord.shards[0].cache.users:
-          if toLower(user.username) == username:
-            replaces.add ('@' & mention, "<@" & id & ">")
-            replaces.add (mention, "<@" & id & ">")
-      msg = msg.multiReplace(replaces)
-    asyncCheck sendWebhook(
-      ircChan, nick, msg
-    )
+  block mentions:
+    # Blacklist for mentions 
+    # TODO XXX Add to config
+    if nick in ["disbot[IRC]", "ForumUpdaterBot[IRC]"]: break mentions
+    var replaces: seq[(string, string)]      
+    for mention in msg.findMentions():
+      if mention.len < 4: continue # TODO XXX add this to config - min char limit for mention
+      var username = toLower(mention)
+      # Search through all members on the channel (cached locally so it's fine)
+      for id, user in discord.shards[0].cache.users:
+        if toLower(user.username) == username:
+          replaces.add ('@' & mention, "<@" & id & ">")
+          replaces.add (mention, "<@" & id & ">")
+    msg = msg.multiReplace(replaces)
+  asyncCheck sendWebhook(
+    ircChan, nick, msg
+  )
 
 type
   PasteKind* = enum IxIo, PasteRs
