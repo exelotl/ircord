@@ -21,7 +21,7 @@ This library is made possible by:
 
 - https://github.com/mark-summerfield/diff or message edits diffing.
 
-- https://ix.io for handling big messages/code snippets.
+- https://play.nim-lang.org and https://ix.io for handling big messages/code snippets.
 
 
 The bot is asynchronous and should be fully cross-platform (there's no OS-specific stuff in the bot).
