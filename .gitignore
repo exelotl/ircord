@@ -8,4 +8,7 @@
 !*/
 !LICENSE
 
-ircord.toml
+*.toml
+!ircord_default.toml
+
+zig-cache
