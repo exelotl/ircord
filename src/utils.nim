@@ -304,8 +304,10 @@ let mentParser = peg mentions:
   >nick <- +(Alnum | '_')
   # @nick or ping nick
   mention <- ('@' * nick) | ("ping" * *' ' * nick)
-  # optional @ + nick + optional whitespace + :
-  leadingMention <- ?'@' * nick * *' ' * ":"
+  leadMentionSeps <- {':', ','}
+  
+  # optional @ + nick + optional whitespace + : or ,
+  leadingMention <- ?'@' * nick * *' ' * leadMentionSeps
   # check for a single leading mention and search for other mentions
   mentions <- ?leadingMention * *@mention
 
