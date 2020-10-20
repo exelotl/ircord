@@ -292,28 +292,44 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
     of Replace:
       result = result.replace(obj.r.old, obj.r.id)
 
+
+#[
+  We only allow these 3 types of mentions:
+  1) "Nick: hello" at the start of the message (only one nick is possible)
+  2) "@Nick" - the best way to ping someone
+  3) "ping Nick" - can happen more than 1 time in the message
+]#
+
 let mentParser = peg mentions:
   >nick <- +(Alnum | '_')
-
-  # mentions like "nick1, nick2: msg" or "nick1 nick2: msg
-  sep <- +(' ' | ',')
-
-  mention <- ('@' * nick) | ("ping" * +(sep * ?'@' * nick))
-
-  # Separator is optional for when we only have 1 mention
-  # So both "dom96 mratsim: hi" and "dom96: hi" are supported
-  # Support also yardanico ping, but don't consume the ping,
-  # because it might be a prefix ping
-  suffixPing <- sep * &"ping"
-  leadingMentions <- (mention | nick) * *((sep * (mention | nick)) - suffixPing) * (?sep * ':' | suffixPing)
-
-  mentions <- ?leadingMentions * *@mention
+  # @nick or ping nick
+  mention <- ('@' * nick) | ("ping" * *' ' * nick)
+  # optional @ + nick + optional whitespace + :
+  leadingMention <- ?'@' * nick * *' ' * ":"
+  # check for a single leading mention and search for other mentions
+  mentions <- ?leadingMention * *@mention
 
 iterator findMentions*(s: string): string =
   ## Simple iterator for yielding all words
   ## which are entirely made of IdentChars
-  for word in s.split(Whitespace + {':', '@', ','}):
+  for word in mentParser.match(s).captures:
     yield word
+
+
+when false:
+  let strings = [
+    "Yardanico: hello how are you?",
+    "ping dom96",
+    "Yardanico: hello @dom96",
+    "@dom96: ping Araq",
+    "test ping @Araq @hello"
+  ]
+
+  for str in strings:
+    echo "Parsing: " & str
+    for ment in findMentions(str):
+      echo "Parsed nick: " & ment
+    echo "-".repeat(20)
 
 when false:
   let boldStr = boldC & "boldness" & boldC
