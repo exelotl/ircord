@@ -338,12 +338,31 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   else: discard
   ]#
 
+proc handleReplies(m: Message, msg: string): Future[string] {.async.} = 
+  let origMsgOpt = m.referencedMessage
+
+  # For now we convert the message into something like
+  # <i>In reply to @name "hello world...":</i> msg
+  if origMsgOpt.isSome():
+    let orig = origMsgOpt.get()
+    # Remove prefixes/suffixes of the bridge like [IRC]
+    let origName = orig.author.username.split("[")[0]
+    result = &"\x1DIn reply to @{origName} \""
+    var exploded = orig.content.split(Whitespace)
+    # Add 3 words to the context at max, 50 characters at max
+    var temp = exploded[0 .. min(exploded.len - 1, 3)].join(" ")
+    temp = temp[0 .. min(temp.len - 1, 50)]
+    result.add &"{temp}\":\x1D {msg}"
+  else:
+    result = &"\x1DIn reply to an unknown message:\x1D {msg}"
+
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
   ## Does all needed modifications on message contents before sending it:
   ## - Adds link to all attachments
   ## - Converts Discord pings into text pings
   ## - Converts Markdown to IRC formatting
   ## - Handles code pastes
+  ## - Handles reply messages
   var data = m.content
   # If this is not a command
   if not (await handleDiscordCmds(m)):
@@ -351,6 +370,8 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
     data = handleObjects(discord, m, data)
     data = data.mdToIrc()
     data = await m.handlePaste(data)
+    if m.kind == mtReply:
+      data = await m.handleReplies(data)
     # Add a note that we actually read that message
     #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
     result = some(data)
