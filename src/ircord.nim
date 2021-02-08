@@ -247,6 +247,7 @@ proc createPaste*(data: string, kind = IxIo): Future[Option[string]] {.async.} =
     client.close()
 
 proc checkMessage(m: Message): Option[string] =
+  ## Checks if a message needs be processed by the bridge
   result = none(string)
   # Don't handle messages which are sent by our own webhooks
   if m.webhook_id.isSome() and m.webhook_id.get() in webhooks: return
@@ -338,7 +339,11 @@ proc handleDiscordCmds(m: Message): Future[bool] {.async.} =
   ]#
 
 proc processMsg(m: Message): Future[Option[string]] {.async.} =
-  ## Does all needed modifications on message contents before sending it
+  ## Does all needed modifications on message contents before sending it:
+  ## - Adds link to all attachments
+  ## - Converts Discord pings into text pings
+  ## - Converts Markdown to IRC formatting
+  ## - Handles code pastes
   var data = m.content
   # If this is not a command
   if not (await handleDiscordCmds(m)):
@@ -365,6 +370,10 @@ var lastMsgsIdx = 0
 
 proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.async.} =
   ## Called when a message is edited in Discord
+  
+  # Bug #8 - removing embeds triggers an edit message
+  if not old.isSome(): return
+
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
@@ -373,68 +382,67 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
   if not msgOpt.isSome():  return
   var msg = msgOpt.get()
 
-  if old.isSome():
-    # For some reason you can get MessageUpdate events after
-    # someone posted a link and Discord generated preview for it
-    if m.content == old.get().content: return
-    let oldContent = block:
-      let old = await old.get().processMsg()
-      if not old.isSome(): return
-      old.get().split()
-    let newContent = msg.split()
-    var newmsgs = newSeqOfCap[string](oldContent.len)
-    # Some content diffing to produce an edited message
-    let slices = toSeq(spanSlices(oldContent, newContent))
-    for i, span in slices:
-      var newmsg = ""
-      # thanks leorize on IRC for suggesting this edit format
-      case span.tag
-      of tagReplace:
-        newmsg.add "\"$1\" => \"$2\"".format(span.a.join(" "), span.b.join(" "))
-      # We only send diff so we don't care if spans are equal
-      of tagEqual:
-        discard
-      of tagDelete:
-        newmsg.add "\x0304removed\x03 \"$1\"".format(span.a.join(" "))
-      of tagInsert:
-        echo span.a
-        echo span.b
-        echo slices
-        if i != 0:
-          # stuff ...  -> stuff new ...
-          newmsg.add '"'
-          # at max 2 words for context from the left
-          var contextLeftCnt = 0
-          let start = min(max(i - 2, 0), 2)
-          for slice in slices[start .. i - 1]:
-            if contextLeftCnt > 2:
-              break
-            let lastSlice = slice.b[min(slice.b.len - 1, 3)]
-            newmsg.add slice.b.join(" ")
-          newmsg.add " ... "
-          if i < slices.len - 1:
-            # and at max 2 word for context from the right
-            # only if this is not the last slice
-            let startd = min(i + 1, slices.len - 1)
-            let endd = min(i + 2, slices.len - 1)
-            for slice in slices[startd .. endd]:
-              echo slice
-              for part in slice.b:
-                if part != " ":
-                  newmsg.add part
-                  break
-          newmsg.add "\" \x0303added\x03 \""
-          #for slice in slices[start .. i - 1]:
-          #  newmsg.add slice.b.join(" ")
-          #newmsg.add " "
-          newmsg.add span.b.join(" ")
-          newmsg.add '"'
-        else:
-          newmsg.add ""
+  # For some reason you can get MessageUpdate events after
+  # someone posted a link and Discord generated preview for it
+  if m.content == old.get().content: return
+  let oldContent = block:
+    let old = await old.get().processMsg()
+    if not old.isSome(): return
+    old.get().split()
+  let newContent = msg.split()
+  var newmsgs = newSeqOfCap[string](oldContent.len)
+  # Some content diffing to produce an edited message
+  let slices = toSeq(spanSlices(oldContent, newContent))
+  for i, span in slices:
+    var newmsg = ""
+    # thanks leorize on IRC for suggesting this edit format
+    case span.tag
+    of tagReplace:
+      newmsg.add "\"$1\" => \"$2\"".format(span.a.join(" "), span.b.join(" "))
+    # We only send diff so we don't care if spans are equal
+    of tagEqual:
+      discard
+    of tagDelete:
+      newmsg.add "\x0304removed\x03 \"$1\"".format(span.a.join(" "))
+    of tagInsert:
+      echo span.a
+      echo span.b
+      echo slices
+      if i != 0:
+        # stuff ...  -> stuff new ...
+        newmsg.add '"'
+        # at max 2 words for context from the left
+        var contextLeftCnt = 0
+        let start = min(max(i - 2, 0), 2)
+        for slice in slices[start .. i - 1]:
+          if contextLeftCnt > 2:
+            break
+          let lastSlice = slice.b[min(slice.b.len - 1, 3)]
+          newmsg.add slice.b.join(" ")
+        newmsg.add " ... "
+        if i < slices.len - 1:
+          # and at max 2 word for context from the right
+          # only if this is not the last slice
+          let startd = min(i + 1, slices.len - 1)
+          let endd = min(i + 2, slices.len - 1)
+          for slice in slices[startd .. endd]:
+            echo slice
+            for part in slice.b:
+              if part != " ":
+                newmsg.add part
+                break
+        newmsg.add "\" \x0303added\x03 \""
+        #for slice in slices[start .. i - 1]:
+        #  newmsg.add slice.b.join(" ")
+        #newmsg.add " "
+        newmsg.add span.b.join(" ")
+        newmsg.add '"'
+      else:
+        newmsg.add ""
 
-      if newmsg != "":
-        newmsgs.add newmsg
-    msg = newmsgs.join(" | ")
+    if newmsg != "":
+      newmsgs.add newmsg
+  msg = newmsgs.join(" | ")
 
   # Use bold styling to highlight the username
   let toSend = &"\x02<{m.author.username}>\x02 (edit) {msg}"
@@ -473,11 +481,10 @@ proc startDiscord() {.async.} =
   # intentGuilds -> receive initial info about the server
   # intentGuildMessages -> obviously to receive the messages themselves
   # intentGuildMembers -> to receive events for member join/leave, so
-  # the cache can dynamically change and we can use it for mentions
-  # !!! for intentGuildMembers we need to enable SERVER MEMBERS INTENT
-  # in bot settings
+  # The cache can dynamically change and we can use it for mentions
+  # IMPORTANT: For intentGuildMembers to work we need to enable 
+  # SERVER MEMBERS INTENT in the bot settings
   await discord.startSession(
-    # XXX: giGuildEmojis shouldn't be needed
     gatewayIntents = {giGuilds, giGuildMembers, giGuildMessages}
   )
 

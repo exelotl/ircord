@@ -59,4 +59,4 @@ proc parseConfig*(filename = "ircord.toml"): Config =
       )
   
   except:
-    raise newException(ValueError, "Can't parse configuration file!")
+    raise newException(ValueError, "Can't parse the configuration file!")
