@@ -1,6 +1,9 @@
-import asyncdispatch, strutils, tables, parseutils
+import std/[
+  asyncdispatch, strutils, tables, parseutils, options,
+  unicode # for npeg utf8
+]
 import dimscord
-import npeg
+import npeg, npeg/lib/utf8 # for unicode discord nicknames
 
 type
   FormatAtom = object
@@ -129,7 +132,7 @@ proc ircToMd*(msg: string): string =
     spaceBefore = result.parseWhile(temp, {' '})
     let skip = result.parseUntil(temp, {' '}, spaceBefore)
     spaceAfter = result.parseWhile(temp, {' '}, skip + spaceBefore)
-    result = result.strip()
+    result = strutils.strip(result)
 
     result.insert ' '.repeat(spaceBefore)
     result.add ' '.repeat(spaceAfter)
@@ -270,7 +273,7 @@ let objParser = peg("discord", d: seq[Data]):
 
   discord <- +@matchone
 
-proc handleObjects*(s: DiscordClient, msg: Message, content: string): string = 
+proc handleObjects*(s: DiscordClient, g: Guild, msg: Message, content: string): string = 
   result = content
 
   var data = newSeq[Data]()
@@ -284,7 +287,10 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
       # Iterate over all mentioned users and find the one we need
       for user in msg.mention_users:
         if user.id == obj.r.id:
-          result = result.replace(obj.r.old, "@" & $user.username)
+          # Resolve display names as well
+          let guildMember = g.members[user.id]
+          let name = guildMember.nick.get(user.username)
+          result = result.replace(obj.r.old, "@" & name)
     of Channel:
       let chan = s.shards[0].cache.guildChannels.getOrDefault(obj.r.id)
       if not chan.isNil():
@@ -301,7 +307,7 @@ proc handleObjects*(s: DiscordClient, msg: Message, content: string): string =
 ]#
 
 let mentParser = peg mentions:
-  >nick <- +(Alnum | '_')
+  >nick <- +(Alnum | '_' | utf8.alpha)
   # @nick or ping nick
   mention <- ('@' * nick) | ("ping" * *' ' * nick)
   leadMentionSeps <- {':', ','}
@@ -365,3 +371,7 @@ when false:
     let match = objParser.match(test, data)
     echo data
     doAssert match.ok, "assert failed for " & test
+
+
+when true:
+  echo repr mdToIrc("I've never seen `import module*` did you just come up with that syntax?")

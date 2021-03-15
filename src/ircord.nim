@@ -3,8 +3,9 @@ import std / [
   strformat, strutils, sequtils, json, strscans, parseutils,
   httpclient, uri, asyncdispatch, tables, options,
   math, md5, times, segfaults,
-  wordwrap
+  wordwrap, tables
 ]
+from unicode import nil
 # Nimble
 import dimscord, irc, diff
 import regex
@@ -15,6 +16,9 @@ import config, utils
 var conf: Config
 # Global Discord shard
 var discord: DiscordClient
+# Guild (the main server) of the bot. "ref object" so we can track updates
+# from dimscord
+var guild: Guild
 # Global IRC client
 var ircClient: AsyncIrc
 
@@ -82,6 +86,11 @@ proc parseIrcMessage(nick, msg: var string): bool =
     if scanf(msg, "**<$+>** $+", newNick, newMsg):
       nick = newNick & "[Gitter]"
       msg = newMsg
+      when false:
+        # Check if it's a Gitter quote
+        var quote, quoteUser: string
+        if scanf(msg, "> *<FromDiscord>* <$+> $+ ↵ ↵ $+", quoteUser, quote, newMsg):
+          msg = newMsg
     # Shouldn't happen anyway
     else: result = false
     # Special case for Gitter <-> Matrix bridge (very rare)
@@ -211,8 +220,10 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
     for mention in msg.findMentions():
       var username = toLower(mention)
       # Search through all members on the channel (cached locally so it's fine)
-      for id, user in discord.shards[0].cache.users:
-        if toLower(user.username) == username:
+      for id, member in guild.members:
+        # display nick if exists, otherwise username
+        let name = member.nick.get(member.user.username)
+        if toLower(name) == username:
           replaces.add ('@' & mention, "<@" & id & ">")
           replaces.add (mention, "<@" & id & ">")
     msg = msg.multiReplace(replaces)
@@ -270,10 +281,22 @@ proc preprocessPasteMsg(msg: var string, isCodePaste = false) =
   
   var isText = true
   for line in lines:
-    # If the line starts with ``` - toggle the text status
-    # and skip the line itself
+    # If it's a markdown code block
     if line.startsWith("```"):
-      isText = not isText
+      # If isText is false - we're at the end of the paste
+      if not isText: 
+        isText = true
+        # There might be some leftover text (very rare, but happens), consider this:
+        # ```nim
+        #  echo "hi!"
+        # ```how to solve the problem?
+        # so we have to handle this here
+        let splt = line.split("```")
+        if isCodePaste and splt.len > 1 and splt[1].len > 0:
+          msg.add "# "
+          msg.add wrapWords(splt[1], newLine = "\n# ")
+      # Otherwise it's a start of the paste - set isText to false 
+      else: isText = false
       # Just so that we don't have empty lines in place of ```
       continue
 
@@ -290,8 +313,8 @@ proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
   ## Handles pastes or big messages
   # We treat _all_ messages that contain ``` as code pastes
   # Otherwise a message is a normal paste if it's more than 3 lines
-  # long or more than 500 characters long - that's very near to 
-  # the 512 IRC char limit
+  # long or more than 500 characters long because IRC messages have a  
+  # 512 character limit
   let maybeCodePaste = "```" in msg
   if not (maybeCodePaste or msg.count('\n') > 3 or msg.len > 500):
     # Replace newlines with ↵
@@ -345,8 +368,15 @@ proc handleReplies(m: Message, msg: string): Future[string] {.async.} =
   # <i>In reply to @name "hello world...":</i> msg
   if origMsgOpt.isSome():
     let orig = origMsgOpt.get()
+    let m = orig.member
+
+    # Get the display name
+    let name = 
+      if m.isSome(): m.get().nick.get(orig.author.username) 
+      else: orig.author.username
+    
     # Remove prefixes/suffixes of the bridge like [IRC]
-    let origName = orig.author.username.split("[")[0]
+    let origName = name.split("[")[0]
     result = &"\x1DIn reply to @{origName} \""
     var exploded = orig.content.split(Whitespace)
     # Add 3 words to the context at max, 50 characters at max
@@ -367,11 +397,15 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
   # If this is not a command
   if not (await handleDiscordCmds(m)):
     data &= m.handleAttaches()
-    data = handleObjects(discord, m, data)
+    data = handleObjects(discord, guild, m, data)
     data = data.mdToIrc()
-    data = await m.handlePaste(data)
+    # We have to handle replies before code pastes
+    # because reply can add additional text and the message
+    # will be longer than the maximum IRC limit, so we will
+    # need to upload the whole reply to some service
     if m.kind == mtReply:
       data = await m.handleReplies(data)
+    data = await m.handlePaste(data)
     # Add a note that we actually read that message
     #await discord.api.addMessageReaction(m.channelId, m.id, "📩")
     result = some(data)
@@ -389,28 +423,7 @@ proc processMsg(m: Message): Future[Option[string]] {.async.} =
 var lastMsgs = newSeq[int](3)
 var lastMsgsIdx = 0
 
-proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.async.} =
-  ## Called when a message is edited in Discord
-  
-  # Bug #8 - removing embeds triggers an edit message
-  if not old.isSome(): return
-
-  let check = checkMessage(m)
-  if not check.isSome(): return
-  let ircChan = check.get()
-
-  let msgOpt = await m.processMsg()
-  if not msgOpt.isSome():  return
-  var msg = msgOpt.get()
-
-  # For some reason you can get MessageUpdate events after
-  # someone posted a link and Discord generated preview for it
-  if m.content == old.get().content: return
-  let oldContent = block:
-    let old = await old.get().processMsg()
-    if not old.isSome(): return
-    old.get().split()
-  let newContent = msg.split()
+proc getDiff(oldContent, newContent: seq[string]): string = 
   var newmsgs = newSeqOfCap[string](oldContent.len)
   # Some content diffing to produce an edited message
   let slices = toSeq(spanSlices(oldContent, newContent))
@@ -463,10 +476,37 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
 
     if newmsg != "":
       newmsgs.add newmsg
-  msg = newmsgs.join(" | ")
+  result = newmsgs.join(" | ")
 
+proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.async.} =
+  ## Called when a message is edited in Discord
+  
+  # Bug #8 - removing embeds triggers an edit message
+  if not old.isSome(): return
+
+  let check = checkMessage(m)
+  if not check.isSome(): return
+  let ircChan = check.get()
+
+  let msgOpt = await m.processMsg()
+  if not msgOpt.isSome():  return
+  var msg = msgOpt.get()
+
+  # For some reason you can get MessageUpdate events after
+  # someone posted a link and Discord generated preview for it
+  if m.content == old.get().content: return
+  let oldContent = block:
+    let old = await old.get().processMsg()
+    if not old.isSome(): return
+    unicode.split(old.get())
+  let newContent = unicode.split(msg)
+
+  msg = getDiff(oldContent, newContent)
+
+  let guildMember = m.member.get()
+  let name = guildMember.nick.get(m.author.username)
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x02 (edit) {msg}"
+  let toSend = &"\x02<{name}>\x02 (edit) {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 var cached = false
@@ -478,6 +518,7 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
       @[conf.discord.guild], limit = some(0), query = some("")
     )
     cached = true
+    guild = s.cache.guilds[conf.discord.guild]
   let check = checkMessage(m)
   if not check.isSome(): return
   let ircChan = check.get()
@@ -490,7 +531,9 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   let msg = msgOpt.get()
 
   # Use bold styling to highlight the username
-  let toSend = &"\x02<{m.author.username}>\x02 {msg}"
+  let guildMember = m.member.get()
+  let name = guildMember.nick.get(m.author.username)
+  let toSend = &"\x02<{name}>\x02 {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} =
