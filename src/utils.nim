@@ -309,7 +309,8 @@ proc handleObjects*(s: DiscordClient, g: Guild, msg: Message, content: string): 
 let mentParser = peg mentions:
   >nick <- +(Alnum | '_' | utf8.alpha)
   # @nick or ping nick
-  mention <- ('@' * nick) | ("ping" * *' ' * nick)
+  # + is "one or more", otherwise "pinged" = "ping @ed"!
+  mention <- ('@' * nick) | ("ping" * +' ' * nick)
   leadMentionSeps <- {':', ','}
   
   # optional @ + nick + optional whitespace + : or ,
@@ -323,6 +324,9 @@ iterator findMentions*(s: string): string =
   for word in mentParser.match(s).captures:
     yield word
 
+when true:
+  for ment in findMentions("@asd have you been tiled and pinged and redpilled today?"):
+    echo "Mention - ", ment
 
 when false:
   let strings = [
