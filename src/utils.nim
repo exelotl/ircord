@@ -3,6 +3,7 @@ import std/[
   unicode # for npeg utf8
 ]
 import dimscord
+import optionsutils
 import npeg, npeg/lib/utf8 # for unicode discord nicknames
 
 type
@@ -287,9 +288,10 @@ proc handleObjects*(s: DiscordClient, g: Guild, msg: Message, content: string): 
       # Iterate over all mentioned users and find the one we need
       for user in msg.mention_users:
         if user.id == obj.r.id:
-          # Resolve display names as well
-          let guildMember = g.members[user.id]
-          let name = guildMember.nick.get(user.username)
+          # Get the display name if it exists
+          let name = 
+            if user.id in g.members: get(g.members[user.id].nick, user.username)
+            else: user.username
           result = result.replace(obj.r.old, "@" & name)
     of Channel:
       let chan = s.shards[0].cache.guildChannels.getOrDefault(obj.r.id)

@@ -9,6 +9,7 @@ from unicode import nil
 # Nimble
 import dimscord, irc, diff
 import regex
+import optionsutils
 # Our modules
 import config, utils
 
@@ -368,12 +369,9 @@ proc handleReplies(m: Message, msg: string): Future[string] {.async.} =
   # <i>In reply to @name "hello world...":</i> msg
   if origMsgOpt.isSome():
     let orig = origMsgOpt.get()
-    let m = orig.member
 
-    # Get the display name
-    let name = 
-      if m.isSome(): m.get().nick.get(orig.author.username) 
-      else: orig.author.username
+    # Get the display name if exists
+    let name = get(orig.member?.nick, orig.author.username)
     
     # Remove prefixes/suffixes of the bridge like [IRC]
     let origName = name.split("[")[0]
@@ -503,8 +501,7 @@ proc messageUpdate(s: Shard, m: Message, old: Option[Message], exists: bool) {.a
 
   msg = getDiff(oldContent, newContent)
 
-  let guildMember = m.member.get()
-  let name = guildMember.nick.get(m.author.username)
+  let name = get(m.member?.nick, m.author.username)
   # Use bold styling to highlight the username
   let toSend = &"\x02<{name}>\x02 (edit) {msg}"
   await ircClient.privmsg(ircChan, toSend)
@@ -530,9 +527,8 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   if not msgOpt.isSome(): return
   let msg = msgOpt.get()
 
+  let name = get(m.member?.nick, m.author.username)
   # Use bold styling to highlight the username
-  let guildMember = m.member.get()
-  let name = guildMember.nick.get(m.author.username)
   let toSend = &"\x02<{name}>\x02 {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
