@@ -307,10 +307,10 @@ proc handleObjects*(s: DiscordClient, g: Guild, msg: Message, content: string): 
 ]#
 
 let mentParser = peg mentions:
-  >nick <- +(Alnum | '_' | utf8.alpha)
+  >nick <- (Alnum | '_' | utf8.alpha)[4..32]
   # @nick or ping nick
   # + is "one or more", otherwise "pinged" = "ping @ed"!
-  mention <- ('@' * nick) | ("ping" * +' ' * nick)
+  mention <- !Alnum * (('@' * nick) | ("ping" * +' ' * nick))
   leadMentionSeps <- {':', ','}
   
   # optional @ + nick + optional whitespace + : or ,
