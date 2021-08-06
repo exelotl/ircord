@@ -79,8 +79,8 @@ proc parseIrcMessage(nick, msg: var string): bool =
   msg = msg.ircToMd()
 
   var newNick, newMsg: string
-  # Just in a rare case we accidentally start this bot in #nim
-  if nick == "FromDiscord": result = false
+  # Ignore messages from certain IRC users (prevent infinite loops etc.)
+  if nick in conf.irc.ignoreList: result = false
   # Special case for the Gitter <-> IRC bridge
   elif nick == "FromGitter":
     # Parse FromGitter message - ** is boldness (irc -> markdown)
