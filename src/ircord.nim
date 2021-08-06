@@ -79,8 +79,8 @@ proc parseIrcMessage(nick, msg: var string): bool =
   msg = msg.ircToMd()
 
   var newNick, newMsg: string
-  # Just in a rare case we accidentally start this bot in #nim
-  if nick == "FromDiscord": result = false
+  # Just in case we accidentally have the old bot running at the same time.
+  if nick == "gb-bridge": result = false
   # Special case for the Gitter <-> IRC bridge
   elif nick == "FromGitter":
     # Parse FromGitter message - ** is boldness (irc -> markdown)
@@ -330,10 +330,10 @@ proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
         let maybePaste = await createPaste(msg, service)
         if maybePaste.isSome():
           link = maybePaste.get()
-          # Convert the ix.io link into a nim playground one
-          if maybeCodePaste and service == IxIo:
-            let ixid = link.rsplit("/")[^1]
-            link = "https://play.nim-lang.org/#ix=" & ixid
+          # # Convert the ix.io link into a nim playground one
+          # if maybeCodePaste and service == IxIo:
+          #   let ixid = link.rsplit("/")[^1]
+          #   link = "https://play.nim-lang.org/#ix=" & ixid
           
           break tryPasting
       
