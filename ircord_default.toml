@@ -7,6 +7,8 @@ password = ""
 # List of IRC usernames of admins who'll be able to ban people in Discord
 # (or possibly for some other admin-only commands)
 adminList = []
+# List of IRC usernames which should not be posted to Discord
+ignoreList = ["FromDiscord"]
 
 [discord]
 # Discord bot token
