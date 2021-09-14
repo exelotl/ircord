@@ -314,10 +314,10 @@ proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
   ## Handles pastes or big messages
   # We treat _all_ messages that contain ``` as code pastes
   # Otherwise a message is a normal paste if it's more than 3 lines
-  # long or more than 500 characters long because IRC messages have a  
+  # long or more than 400 characters long because IRC messages have a  
   # 512 character limit
   let maybeCodePaste = "```" in msg
-  if not (maybeCodePaste or msg.count('\n') > 3 or msg.len > 500):
+  if not (maybeCodePaste or msg.count('\n') > 3 or msg.len > 400):
     # Replace newlines with ↵
     result = msg.replace("\n", "↵")
   else:
