@@ -30,6 +30,9 @@ var webhooks = newSeq[string]()
 var ircToWebhook = newTable[string, string]()
 var discordToIrc = newTable[string, string]()
 
+# Discord channel IDs by name
+var discordIdByName = newTable[string, string]()
+
 # Timestamp of when the bot was started
 var startTime = getTime()
 
@@ -40,7 +43,7 @@ proc getUptime: string =
   let uptime = $initDuration(minutes = (getTime() - startTime).inMinutes)
   result = fmt"Uptime - {uptime}"
 
-proc sendWebhook(ircChan, username, content: string, user = none(User)) {.async.} =
+proc sendWebhook(webhook, username, content: string, user = none(User)) {.async.} =
   ## Send a message to a channel on Discord using webhook url
   ## with provided username and message content.
   # Get hash of the username to generate unique avatars, but unique to each IRC user
@@ -59,7 +62,7 @@ proc sendWebhook(ircChan, username, content: string, user = none(User)) {.async.
       }
     }
   )
-  let resp = await client.post(ircToWebhook[ircChan], data)
+  let resp = await client.post(webhook, data)
   client.close()
 
 proc parseIrcMessage(nick, msg: var string): bool =
@@ -114,77 +117,12 @@ var
   lastMessages: Table[string, (string, string)] 
 
 proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
-  if nick notin conf.irc.adminList or msg[0] != '!': return
-  # Create a new future, we don't really handle race conditions here
-  # since we assume that admin commands are extremely rare.
-  if ircAccResp.isNil():
-    ircAccResp = newFuture[(string, string)]()
-  await ircClient.privmsg("NickServ", &"acc {nick}")
-  let acc = await ircAccResp
-  # Nullify the future
-  ircAccResp = nil
-  #[
-    0 - account or user does not exist
-    1 - account exists but user is not logged in
-    2 - user is not logged in but recognized
-    3 - user is logged in <- that's the only one we care about
-  ]#
-  if cmpIgnoreCase(acc[0], nick) != 0 or acc[1] != "3":
-    # The user is apparently not identified or not recognized
-    return
-  # Parsing the actual commands
-  let data = msg.split(" ")
-  if data.len == 0: return
-  # It seems to be an actual command
-  result = true
-  case data[0]
-  # Gets a Discord UID of all users which match the string
-  of "!getdiscid":
-    if data.len < 2:
-      await ircClient.privmsg(chan, "Usage: !getid Username#1234")
-      return
-    let username = data[1..^1].join(" ")
-    let users = await discord.getUsers(conf.discord.guild, username)
-    var toSend = ""
-    if users.len == 1: toSend = $users[0] & " has Discord UID: " & users[0].id
-    elif users.len > 1: 
-      for user in users:
-        toSend &= $user & " has Discord UID " & user.id & ", "
-    else: toSend = "Unknown username"
-    await ircClient.privmsg(chan, toSend)
-  of "!status":
-    await ircClient.privmsg(chan, getUptime())
-  # Gets a Discord UID of a user who sent the last message on Discord
-  # in the current channel
-  of "!getlastid":
-    var chanId = ""
-    for (id, irc) in discordToIrc.pairs():
-      if irc == chan: 
-        chanId = id
-        break
-    var (lastUsername, lastId) = lastMessages.getOrDefault(chanId)
-    if lastId != "": 
-      await ircClient.privmsg(
-        chan, fmt"UID of {lastUsername} who sent/edited a message most recently on Discord is {lastId}"
-      )
-    else:
-      await ircClient.privmsg(
-        chan, "Don't have info for the current channel yet."
-      )
-  # Bans a Discord user by UID
-  of "!bandisc":
-    if data.len < 2:
-      await ircClient.privmsg(chan, "Usage: !ban 174365113899057152")
-      return
-    var id = try: $parseInt(data[1]) except: ""
-    if id != "":
-      await discord.api.createGuildBan(conf.discord.guild, id)
-      await ircClient.privmsg(chan, "User with UID " & $id & " was banned on Discord!")
-    else:
-      await ircClient.privmsg(chan, "Unknown UID")
-  # If an admin sent a message starting with ! and it wasn't a command
-  else:
-    result = false
+  if msg.startsWith("!post ") and msg.len > 6:
+    let showcase = conf.findByName("showcase")
+    if chan == showcase.irc:
+      await sendWebhook(showcase.webhook, nick, msg[6..^1])
+      await ircClient.privmsg(chan, "\x1DPosted!\x1D")
+      result = true
 
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   ## Handles all events received by the IRC client instance
@@ -229,7 +167,7 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
           replaces.add (mention, "<@" & id & ">")
     msg = msg.multiReplace(replaces)
   asyncCheck sendWebhook(
-    ircChan, nick, msg
+    ircToWebhook[ircChan], nick, msg
   )
 
 type
@@ -528,8 +466,12 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
   let msg = msgOpt.get()
 
   let name = get(m.member?.nick, m.author.username)
-  # Use bold styling to highlight the username
-  let toSend = &"\x02<{name}>\x02 {msg}"
+  let toSend =
+    if m.channel_id == discordIdByName["showcase"]:
+      &"\x02Showcase post from {name}:\x02 {msg}"
+    else:
+      # Use bold styling to highlight the username
+      &"\x02<{name}>\x02 {msg}"
   await ircClient.privmsg(ircChan, toSend)
 
 proc startDiscord() {.async.} =
@@ -576,6 +518,7 @@ proc main() {.async.} =
 
     ircToWebhook[entry.irc] = entry.webhook
     discordToIrc[entry.discord] = entry.irc
+    discordIdByName[entry.name] = entry.discord
 
   asyncCheck startDiscord()
   # Block until startIrc exits

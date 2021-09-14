@@ -14,12 +14,16 @@ type
     guild*: string
 
   ChannelMapping* = object
-    irc*, discord*, webhook*: string
+    name*, irc*, discord*, webhook*: string
   
   Config* = object
     irc*: IrcConfig
     discord*: DiscordConfig
     mapping*: seq[ChannelMapping]
+
+proc findByName*(c: Config, name: string): ChannelMapping =
+  for entry in c.mapping:
+    if entry.name == name: return entry
 
 proc findIrc*(c: Config, ircChan: string): ChannelMapping = 
   for entry in c.mapping:
@@ -56,6 +60,7 @@ proc parseConfig*(filename = "ircord.toml"): Config =
 
     for mapping in mappings.getElems():
       result.mapping.add ChannelMapping(
+        name: if "name" in mapping: (mapping["name"].getStr()) else: "",
         irc: mapping["irc"].getStr(),
         discord: mapping["discord"].getStr(),
         webhook: mapping["webhook"].getStr()
