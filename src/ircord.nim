@@ -387,7 +387,6 @@ proc getDiff(oldContent, newContent: seq[string]): string =
         for slice in slices[start .. i - 1]:
           if contextLeftCnt > 2:
             break
-          let lastSlice = slice.b[min(slice.b.len - 1, 3)]
           newmsg.add slice.b.join(" ")
         newmsg.add " ... "
         if i < slices.len - 1:
