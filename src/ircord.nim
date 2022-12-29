@@ -466,7 +466,9 @@ proc messageCreate(s: Shard, m: Message) {.async.} =
 
   let name = get(m.member?.nick, m.author.username)
   let toSend =
-    if m.channel_id == discordIdByName["showcase"]:
+    if m.channel_id == discordIdByName["gbajam-news"]:
+      &"\x02[New Announcement]\x02 {msg}"
+    elif m.channel_id == discordIdByName["showcase"]:
       &"\x02Showcase post from {name}:\x02 {msg}"
     else:
       # Use bold styling to highlight the username
