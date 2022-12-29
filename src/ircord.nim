@@ -126,8 +126,18 @@ proc handleIrcCmds(chan: string, nick, msg: string): Future[bool] {.async.} =
 
 proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   ## Handles all events received by the IRC client instance
-  # Enable color stripping
-  if event.typ != EvMsg or event.params.len < 2:
+  
+  if event.typ != EvMsg:
+    return
+  
+  elif event.cmd == MJoin:
+    let clientId = &"{event.nick}!{event.user}@{event.host}"
+    for ptn in conf.irc.opPatterns:
+      if ptn in clientId:
+        await ircClient.send(&"MODE {event.origin} +o {event.nick}", sendImmediately = true)
+    return
+  
+  elif event.params.len < 2:
     return
 
   # Complete the ircAccResp with the response for the access

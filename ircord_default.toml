@@ -10,6 +10,12 @@ adminList = []
 # List of IRC usernames which should not be posted to Discord
 ignoreList = ["FromDiscord"]
 
+# List of patterns of IRC users to give ops.
+# Client identifiers are of the form nick!username@hostname
+opPatterns = [
+  'someuser_?!somehost@154\.16\.202\.21',
+]
+
 [discord]
 # Discord bot token
 token = "your_token"

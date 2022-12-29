@@ -1,4 +1,5 @@
 import parsetoml
+import regex
 
 type
   IrcConfig* = object
@@ -8,6 +9,7 @@ type
     password*: string
     adminList*: seq[string]
     ignoreList*: seq[string]
+    opPatterns*: seq[Regex]
   
   DiscordConfig* = object
     token*: string
@@ -48,6 +50,8 @@ proc parseConfig*(filename = "ircord.toml"): Config =
       result.irc.adminList.add(admin.getStr())
     for nick in irc["ignoreList"].getElems():
       result.irc.ignoreList.add(nick.getStr())
+    for pattern in irc["opPatterns"].getElems():
+      result.irc.opPatterns.add(re(pattern.getStr()))
 
     let discord = data["discord"]
     result.discord = DiscordConfig(
