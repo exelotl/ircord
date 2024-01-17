@@ -1,16 +1,20 @@
 # Stdlib
-import std / [
+import std/[
   strformat, strutils, sequtils, json, strscans, parseutils,
   httpclient, uri, asyncdispatch, tables, options,
-  math, md5, times, segfaults,
+  math, times, segfaults,
   wordwrap, tables
 ]
 from unicode import nil
 # Nimble
-import dimscord, irc, diff
+import checksums/md5
+import dimscord, irc
 import regex
 import optionsutils
 # Our modules
+# https://github.com/mark-summerfield/diff is gone
+import diff
+
 import config, utils
 
 # Global configuration object
@@ -233,19 +237,24 @@ proc handleIrc(client: AsyncIrc, event: IrcEvent) {.async.} =
   )
 
 type
-  PasteKind* = enum IxIo, PasteRs
+  PasteService* = enum PastyEe, PasteRs
 
-proc createPaste*(data: string, kind = IxIo): Future[Option[string]] {.async.} =
-  ## Creates a paste with `data` on ix.io and returns some(string)
+proc createPaste*(data: string, kind = PastyEe): Future[Option[string]] {.async.} =
+  ## Creates a paste with `data` on the specified paste service and returns some(string)
   ## If pasting failed, returns none
   result = none(string)
   var client = newAsyncHttpClient()
   try:
     case kind
-    of IxIo:
-      let resp = await client.post("http://ix.io", "f:1=" & encodeUrl(data))
-      if resp.code == Http200:
-        result = some strip(await resp.body)
+    of PastyEe:
+      client.headers["Origin"] = "https://play.nim-lang.org/bridge"
+      let resp = await client.post("https://pasty.ee/", data)
+      if resp.code == Http201:
+        let pasteUrl = resp.headers.getOrDefault("Location").toString()
+        if pasteUrl == "":
+          echo "No location header from pasty.ee"
+          return
+        result = some pasteUrl
     of PasteRs:
       let resp = await client.post("https://paste.rs/", data)
       if resp.code in {Http201, Http206}:
@@ -325,17 +334,17 @@ proc handlePaste(m: Message, msg: sink string): Future[string] {.async.} =
 
     var link: string
 
-    block tryPasting:
-      for service in [IxIo, PasteRs]:
-        let maybePaste = await createPaste(msg, service)
-        if maybePaste.isSome():
-          link = maybePaste.get()
-          # Convert the ix.io link into a nim playground one
-          if maybeCodePaste and service == IxIo:
-            let ixid = link.rsplit("/")[^1]
-            link = "https://play.nim-lang.org/#ix=" & ixid
-          
-          break tryPasting
+    # We try to use all paste services, but the Playground only supports pasty links
+    for service in PasteService:
+      let maybePaste = await createPaste(msg, service)
+      if maybePaste.isSome():
+        link = maybePaste.get()
+        # Convert the paste link into a nim playground one
+        if maybeCodePaste and service == PastyEe:
+          let pasteId = link.rsplit("/")[^1]
+          link = "https://play.nim-lang.org/#pasty=" & pasteId
+        
+        break
       
       if not m.guildId.isSome(): return # just to be safe I guess
       link = &"https://discordapp.com/channels/{m.guild_id.get()}/{m.channel_id}/{m.id}"
@@ -544,7 +553,7 @@ proc startDiscord() {.async.} =
   # IMPORTANT: For intentGuildMembers to work we need to enable 
   # SERVER MEMBERS INTENT in the bot settings
   await discord.startSession(
-    gatewayIntents = {giGuilds, giGuildMembers, giGuildMessages}
+    gatewayIntents = {giGuilds, giGuildMembers, giGuildMessages, giMessageContent}
   )
 
 proc startIrc() {.async.} =
