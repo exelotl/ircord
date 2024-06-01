@@ -1,5 +1,6 @@
 switch("define", "ssl")
-
+switch("mm", "orc")
+switch("deepcopy", "on")
 # For now, for debugging (from Dimscord)
 switch("define", "dimscordDebug")
 switch("define", "discordv8")

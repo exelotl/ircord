@@ -19,7 +19,7 @@ This library is made possible by:
 
 - https://github.com/NimParsers/parsetoml for TOML configuration.
 
-- https://github.com/mark-summerfield/diff or message edits diffing.
+- https://github.com/mark-summerfield/diff for message edits diffing.
 
 - https://play.nim-lang.org and https://ix.io for handling big messages/code snippets.
 
@@ -37,3 +37,7 @@ Some of the features:
 - Converting IRC formatting to Discord's markdown and vice-versa
 
 - Word-wrapping big messages or code pastes and sending them with ix.io / paste.rs
+
+# License
+Ircord (everything except `src/diff.nim`) is licensed under the MIT license, see `LICENSE` file for more information.
+`src/diff.nim` is licensed under Apache License, Version 2.0, see the file for more information.

@@ -135,8 +135,10 @@ proc ircToMd*(msg: string): string =
     spaceAfter = result.parseWhile(temp, {' '}, skip + spaceBefore)
     result = strutils.strip(result)
 
-    result.insert ' '.repeat(spaceBefore)
-    result.add ' '.repeat(spaceAfter)
+    if spaceBefore > 0:
+      result.insert ' '.repeat(spaceBefore)
+    if spaceAfter > 0:
+      result.add ' '.repeat(spaceAfter)
 
     # If formatting of the previous and current atoms don't match, insert
     # the formatting character
