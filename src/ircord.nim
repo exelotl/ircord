@@ -195,7 +195,7 @@ proc createPaste*(data: string, kind = PastyEe): Future[Option[string]] {.async.
   try:
     case kind
     of PastyEe:
-      client.headers["Origin"] = "https://play.nim-lang.org/bridge"
+      client.headers["Origin"] = "https://gbadev.net/resources.html"
       let resp = await client.post("https://pasty.ee/", data)
       if resp.code == Http201:
         let pasteUrl = resp.headers.getOrDefault("Location").toString()
